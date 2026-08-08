@@ -430,5 +430,4 @@ Any real-world deployment would require appropriate validation, regulatory compl
 ## Team
 
 **Team:** 11 Dimensions
-**Project:** LATTICE
-**Domain:** Agentic AI / Smart Buildings / Emergency Response
+
