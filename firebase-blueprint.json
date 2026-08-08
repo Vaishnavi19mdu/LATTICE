@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "User profiles for operators and administrators",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["operator", "administrator"] },
+        "buildingId": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "name", "email", "role", "buildingId"]
+    },
+    "buildings": {
+      "title": "Buildings",
+      "description": "Smart buildings in the emergency network",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "buildingId": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    }
+  }
+}

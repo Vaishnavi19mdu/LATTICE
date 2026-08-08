@@ -1,0 +1,6 @@
+{
+  "name": "LATTICE",
+  "description": "Layered Agentic Technology for Trusted Interoperable Collaborative Emergencies",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

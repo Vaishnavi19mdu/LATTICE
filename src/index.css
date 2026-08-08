@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lattice-primary: #423F4F;
+  --color-lattice-secondary: #565E75;
+  --color-lattice-bg: #F3F3F3;
+  --color-lattice-danger: #E26161;
+  --color-lattice-success: #7AE04C;
+  --color-lattice-soft: #E0B7C9;
+  --color-lattice-warning: #E6B85C;
+  --color-lattice-info: #6B9FD4;
+  --color-lattice-ai: #A99BC9;
+  --color-lattice-deep: #292733;
+
+  --font-sans: 'Manrope', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+body {
+  font-family: 'Manrope', 'Montserrat', sans-serif;
+  background-color: #F3F3F3;
+  color: #423F4F;
+}
+
+.font-mono-tech {
+  font-family: 'DM Mono', monospace;
+}
+
+/* Custom subtle noise or geometric grid background */
+.grid-bg-subtle {
+  background-image: radial-gradient(rgba(66, 63, 79, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.grid-line-subtle {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(66, 63, 79, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(66, 63, 79, 0.04) 1px, transparent 1px);
+}
+
+/* Button utility for 6-8px border radius */
+.btn-lattice-primary {
+  background-color: #423F4F;
+  color: #F3F3F3;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  transition: all 0.2s ease-in-out;
+  border: 1px solid #292733;
+}
+
+.btn-lattice-primary:hover {
+  background-color: #292733;
+  box-shadow: 0 4px 12px rgba(41, 39, 51, 0.15);
+  transform: translateY(-1px);
+}
+
+.btn-lattice-primary:active {
+  transform: translateY(0);
+}
+
+.btn-lattice-secondary {
+  background-color: transparent;
+  color: #423F4F;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  transition: all 0.2s ease-in-out;
+  border: 1px solid rgba(66, 63, 79, 0.3);
+}
+
+.btn-lattice-secondary:hover {
+  background-color: rgba(66, 63, 79, 0.06);
+  border-color: #423F4F;
+  transform: translateY(-1px);
+}
+
+.btn-lattice-secondary:active {
+  transform: translateY(0);
+}
+
+/* Custom subtle scrollbar styling */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(86, 94, 117, 0.15);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(86, 94, 117, 0.35);
+}
+
+/* Firefox & touch smooth scrolling support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(86, 94, 117, 0.15) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
