@@ -10,6 +10,7 @@ import { SystemModal } from './components/SystemModal';
 import { LoginPage } from './app/auth/LoginPage';
 import { SignupPage } from './app/auth/SignupPage';
 import { DashboardPage } from './app/dashboard/DashboardPage';
+import { EntrySystemCloud } from './components/EntrySystemCloud';
 
 function MainApp() {
   const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard'>('landing');
@@ -62,6 +63,9 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-[#F3F3F3] text-[#423F4F] flex flex-col font-sans selection:bg-[#423F4F] selection:text-[#F3F3F3]">
+      {/* TEMPORARY: remove this line + the import above once done demoing */}
+      <EntrySystemCloud />
+
       {/* Top Navbar */}
       <Navbar
         onOpenSystemModal={handleEnterSystem}
@@ -109,4 +113,3 @@ export default function App() {
     </AuthProvider>
   );
 }
-
