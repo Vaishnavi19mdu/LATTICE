@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { SharedEmergencyState } from '../lib/mock/emergencyScenario';
-import { getAgentRuntime, AgentRuntime } from '../lib/ai';
+import { getAgentRuntime, AgentRuntime, InterventionConstraints } from '../lib/ai';
 import { PRIMARY_15_EVENTS, StructuredMockEvent } from '../lib/mock/mockEvents';
 
 interface EmergencyContextType {
@@ -11,7 +11,8 @@ interface EmergencyContextType {
   pauseScenario: () => void;
   stepNext: () => void;
   resetScenario: () => void;
-  injectOperatorIntervention: (instruction: string) => void;
+  restartCurrentScenario: () => void;
+  injectOperatorIntervention: (instruction: string, constraints?: InterventionConstraints) => void;
   selectRole: (role: 'BUILDING_OPERATOR' | 'NETWORK_OPERATOR') => void;
   selectBuilding: (buildingId: string) => void;
 }
@@ -35,7 +36,9 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const pauseScenario = () => runtime.pauseScenario();
   const stepNext = () => runtime.stepNext();
   const resetScenario = () => runtime.resetScenario();
-  const injectOperatorIntervention = (instruction: string) => runtime.injectOperatorIntervention(instruction);
+  const restartCurrentScenario = () => runtime.restartCurrentScenario();
+  const injectOperatorIntervention = (instruction: string, constraints?: InterventionConstraints) =>
+    runtime.injectOperatorIntervention(instruction, constraints);
   const selectRole = (role: 'BUILDING_OPERATOR' | 'NETWORK_OPERATOR') => runtime.selectRole(role);
   const selectBuilding = (buildingId: string) => runtime.selectBuilding(buildingId);
 
@@ -49,6 +52,7 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         pauseScenario,
         stepNext,
         resetScenario,
+        restartCurrentScenario,
         injectOperatorIntervention,
         selectRole,
         selectBuilding,

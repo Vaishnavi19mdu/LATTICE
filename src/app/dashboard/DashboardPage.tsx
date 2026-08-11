@@ -216,6 +216,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
                   </button>
                 </>
               )}
+              
 
               <button
                 onClick={() => { setActiveTab('agents'); setIsMobileMenuOpen(false); }}
@@ -388,12 +389,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
           )}
 
           {/* TAB 2: AGENT INTERACTION SUITE */}
-          {activeTab === 'interaction' && (
-            <div className="space-y-6">
-              <AgentInteractionSuite />
-            </div>
-          )}
-
+          {/* TAB 2: AGENT INTERACTION SUITE */}
+{activeTab === 'interaction' && (
+  <div className="space-y-6">
+    <AgentInteractionSuite onNavigateToApproval={() => setActiveTab('decision')} />
+  </div>
+)}
           {/* TAB 3: BUILDING COMPARISON TAB */}
           {activeTab === 'comparison' && (
             <div className="space-y-6">

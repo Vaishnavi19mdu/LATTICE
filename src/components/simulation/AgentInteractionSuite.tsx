@@ -15,7 +15,9 @@ import {
   Building2, 
   ShieldAlert,
   Flame,
-  Globe
+  Globe,
+  AlertTriangle,
+  ArrowRight
 } from 'lucide-react';
 import { useEmergency } from '../../context/EmergencyContext';
 import { AgentNetworkView } from './AgentNetworkView';
@@ -23,7 +25,18 @@ import { Building2DView } from './Building2DView';
 import { OperationsChatWidget } from './OperationsChatWidget';
 import { useSmartAutoScroll } from '../../hooks/useSmartAutoScroll';
 
-export const AgentInteractionSuite: React.FC = () => {
+interface AgentInteractionSuiteProps {
+  /** Called when the operator wants to move to the approval / decision-control screen after the mesh finishes. */
+  onNavigateToApproval?: () => void;
+}
+
+const EXIT_LABEL_TO_KEY: Record<string, 'A' | 'B' | 'C'> = {
+  'Exit A': 'A',
+  'Exit B': 'B',
+  'Exit C': 'C',
+};
+
+export const AgentInteractionSuite: React.FC<AgentInteractionSuiteProps> = ({ onNavigateToApproval }) => {
   const {
     state,
     eventQueue,
@@ -31,16 +44,26 @@ export const AgentInteractionSuite: React.FC = () => {
     pauseScenario,
     stepNext,
     resetScenario,
+    restartCurrentScenario,
     injectOperatorIntervention,
     selectRole,
     selectBuilding,
   } = useEmergency();
 
   const [customInput, setCustomInput] = useState('');
+  const [showRejectPanel, setShowRejectPanel] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
 
   const currentStepIndex = state.activeStepIndex;
   const currentEvent = eventQueue[currentStepIndex] || eventQueue[eventQueue.length - 1];
   const visibleEvents = eventQueue.slice(0, currentStepIndex);
+
+  // Scenario is fully processed once every event has been delivered and playback isn't running.
+  const isComplete =
+    eventQueue.length > 0 &&
+    currentStepIndex >= eventQueue.length &&
+    state.currentStage === 'DELIVERED' &&
+    state.playbackMode !== 'LIVE';
 
   // Smart internal auto-scroll for Conversation Feed (never moves document/window)
   const {
@@ -61,9 +84,32 @@ export const AgentInteractionSuite: React.FC = () => {
   } = useSmartAutoScroll<HTMLDivElement>(state.eventLogs.length);
 
   const handleIntervene = (text: string) => {
-    if (!text.trim()) return;
-    injectOperatorIntervention(text);
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    injectOperatorIntervention(trimmed);
     setCustomInput('');
+  };
+
+  const handleSubmitRejection = () => {
+    const reason = rejectReason.trim();
+    if (!reason) return;
+
+    // Block whichever exit is currently the coordinator's top recommended safe route —
+    // that's what "rejecting the route" should actually mean. Without this, exits
+    // never change and computeResponsePlan() returns the exact same plan every time.
+    const primaryRoute = state.responsePlan?.safeRoutes?.[0];
+    const exitKey = primaryRoute ? EXIT_LABEL_TO_KEY[primaryRoute] : undefined;
+
+    // This goes through the SAME live-mesh intervention path as the preset buttons —
+    // it inserts an event at the current step and triggers a response-plan recompute,
+    // so the agents change course based on the reason instead of restarting anything.
+    injectOperatorIntervention(
+      `ROUTE REJECTED — Reason: ${reason}. Recalculate an alternate egress route avoiding the flagged path.`,
+      exitKey ? { exits: { [exitKey]: 'blocked' } } : undefined
+    );
+
+    setRejectReason('');
+    setShowRejectPanel(false);
   };
 
   return (
@@ -148,7 +194,7 @@ export const AgentInteractionSuite: React.FC = () => {
             </button>
 
             <button
-              onClick={resetScenario}
+              onClick={restartCurrentScenario}
               className="py-2.5 px-3 bg-[#423F4F] hover:bg-[#565E75] text-[#F3F3F3] font-bold rounded-[6px] transition-all cursor-pointer flex items-center gap-1"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -157,6 +203,31 @@ export const AgentInteractionSuite: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* COMPLETION BANNER — appears once every event has been delivered */}
+      {isComplete && (
+        <div className="bg-[#7AE04C]/10 border border-[#7AE04C]/40 rounded-[8px] p-4 flex flex-wrap items-center justify-between gap-3 font-mono-tech">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-[#7AE04C] shrink-0" />
+            <div>
+              <p className="text-xs font-extrabold text-[#292733]">
+                ALL {eventQueue.length} EVENTS PROCESSED — RESPONSE PLAN READY FOR REVIEW
+              </p>
+              <p className="text-[11px] text-[#565E75] font-medium">
+                Route conflicts and coordinator decisions are ready for operator sign-off.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigateToApproval?.()}
+            className="py-2 px-4 bg-[#292733] hover:bg-[#423F4F] text-[#F3F3F3] font-bold rounded-[6px] transition-all cursor-pointer flex items-center gap-2 text-xs shadow-sm shrink-0"
+          >
+            <span>GO TO APPROVAL / DECISION CONTROL</span>
+            <ArrowRight className="w-3.5 h-3.5 text-[#7AE04C]" />
+          </button>
+        </div>
+      )}
 
       {/* HERO SECTION: AGENT NETWORK + LIVE 2D BUILDING FLOORPLAN TELEMETRY */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -444,7 +515,53 @@ export const AgentInteractionSuite: React.FC = () => {
           >
             "Isolate Concourse"
           </button>
+          <button
+            onClick={() => setShowRejectPanel((v) => !v)}
+            className={`px-2.5 py-1 rounded border font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+              showRejectPanel
+                ? 'bg-[#E26161] text-white border-[#E26161]'
+                : 'bg-[#E26161]/20 hover:bg-[#E26161]/40 text-[#E26161] border-[#E26161]/50'
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Reject Route</span>
+          </button>
         </div>
+
+        {/* REJECT-WITH-REASON PANEL */}
+        {showRejectPanel && (
+          <div className="p-3 bg-[#E26161]/10 border border-[#E26161]/40 rounded-[6px] space-y-2 font-mono-tech">
+            <label className="text-[10px] font-bold text-[#E26161] uppercase block">
+              Reason for rejecting current route / plan
+            </label>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="e.g. Exit A crosses the active fire zone on Floor 4, occupants would pass within 5m of the hazard..."
+              rows={2}
+              className="w-full bg-[#1F2028] border border-[#423F4F] rounded-[6px] px-3 py-2 text-xs text-[#F3F3F3] placeholder-[#565E75] focus:outline-none focus:border-[#E26161] font-sans resize-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowRejectPanel(false);
+                  setRejectReason('');
+                }}
+                className="py-1.5 px-3 bg-[#423F4F] hover:bg-[#565E75] text-[#F3F3F3] rounded-[6px] text-[11px] font-bold cursor-pointer transition-all"
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={handleSubmitRejection}
+                disabled={!rejectReason.trim()}
+                className="py-1.5 px-3 bg-[#E26161] hover:bg-[#d15353] disabled:opacity-50 text-white rounded-[6px] text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1.5"
+              >
+                <Send className="w-3 h-3" />
+                <span>SUBMIT REJECTION & RECALCULATE</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <input
