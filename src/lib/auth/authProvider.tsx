@@ -1,31 +1,21 @@
-// DEVELOPMENT ONLY - REMOVE WHEN FIREBASE AUTH IS INTEGRATED
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  User, 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut 
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/firebase';
-import { UserProfile, UserRole } from '../../types/user.types';
-import { DEV_MOCK_USER, isDevAuthEnabled } from './devAuth';
-import { AuthContextType } from './auth.types';
+import { UserProfile } from '../../types/user.types';
+import { AuthContextType, SignupParams } from './auth.types';
 
-export interface SignupParams {
-  name: string;
-  email: string;
-  role: UserRole;
-  buildingId: string;
-  phone?: string;
-  password: string;
-}
+export type { SignupParams } from './auth.types';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [useDevAuth, setUseDevAuth] = useState<boolean>(() => isDevAuthEnabled());
   const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -78,19 +68,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    if (useDevAuth) {
-      // Automatic mock user injection for development/demo mode
-      setUser({
-        uid: DEV_MOCK_USER.uid,
-        email: DEV_MOCK_USER.email,
-        displayName: DEV_MOCK_USER.name,
-      });
-      setProfile(DEV_MOCK_USER);
-      setLoading(false);
-      return;
-    }
-
-    // Standard Firebase Auth listener
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -103,23 +80,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => unsubscribe();
-  }, [useDevAuth]);
+  }, []);
 
   const login = async (email: string, password: string) => {
     setError(null);
-    if (useDevAuth) {
-      setUser({
-        uid: DEV_MOCK_USER.uid,
-        email: email || DEV_MOCK_USER.email,
-        displayName: DEV_MOCK_USER.name,
-      });
-      setProfile({
-        ...DEV_MOCK_USER,
-        email: email || DEV_MOCK_USER.email,
-      });
-      return;
-    }
-
     try {
       const res = await signInWithEmailAndPassword(auth, email, password);
       const userProf = await fetchUserProfile(res.user.uid, res.user.email || '');
@@ -133,21 +97,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = async (params: SignupParams) => {
     setError(null);
-    if (useDevAuth) {
-      const newProf: UserProfile = {
-        uid: `dev-user-${Date.now()}`,
-        name: params.name,
-        email: params.email,
-        role: params.role,
-        buildingId: params.buildingId,
-        phone: params.phone || '',
-        createdAt: new Date().toISOString(),
-      };
-      setUser({ uid: newProf.uid, email: newProf.email, displayName: newProf.name });
-      setProfile(newProf);
-      return;
-    }
-
     try {
       const res = await createUserWithEmailAndPassword(auth, params.email, params.password);
       const newProfile: UserProfile = {
@@ -171,32 +120,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     setError(null);
-    if (!useDevAuth) {
-      await signOut(auth);
-    }
+    await signOut(auth);
     setUser(null);
     setProfile(null);
   };
 
-  const toggleDevAuth = () => {
-    setUseDevAuth((prev) => !prev);
+  const resetPassword = async (email: string) => {
+    setError(null);
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (err: any) {
+      const msg = formatAuthError(err);
+      setError(msg);
+      throw new Error(msg);
+    }
   };
 
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        profile,
-        loading,
-        isAuthenticated: !!user,
-        isDevAuth: useDevAuth,
-        login,
-        signup,
-        logout,
-        error,
-        clearError,
-        toggleDevAuth,
-      }}
+      value={{ user, profile, loading, isAuthenticated: !!user, login, signup, logout, resetPassword, error, clearError }}
     >
       {children}
     </AuthContext.Provider>

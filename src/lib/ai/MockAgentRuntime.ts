@@ -2,6 +2,8 @@ import { AgentRuntime, StateChangeListener } from './AgentRuntime';
 import { SharedEmergencyState, EventLogEntry } from '../mock/emergencyScenario';
 import { StructuredMockEvent } from '../mock/mockEvents';
 import { getRandomScenario } from '../mock/scenarioPresets';
+import { computeResponsePlan } from '../interoperability/responsePlanEngine';
+
 
 export class MockAgentRuntimeImpl implements AgentRuntime {
   private state: SharedEmergencyState;
@@ -13,6 +15,7 @@ export class MockAgentRuntimeImpl implements AgentRuntime {
     const { initialState, events } = getRandomScenario();
     this.state = initialState;
     this.customEventsQueue = events;
+    this.state.responsePlan = computeResponsePlan(this.state);
   }
 
   public getCurrentState(): SharedEmergencyState {
@@ -84,6 +87,7 @@ export class MockAgentRuntimeImpl implements AgentRuntime {
       selectedRole: preservedRole,
       activeBuildingId: preservedBuilding,
     };
+    this.state.responsePlan = computeResponsePlan(this.state);
     this.notify();
   }
 
@@ -122,6 +126,9 @@ export class MockAgentRuntimeImpl implements AgentRuntime {
     // Insert into events queue right after current active step index
     this.customEventsQueue.splice(this.state.activeStepIndex, 0, operatorEvt);
     this.state.totalSteps = this.customEventsQueue.length;
+
+    // Recompute response plan immediately so UI reflects the intervention without waiting a step
+    this.state.responsePlan = computeResponsePlan(this.state);
 
     // Trigger step lifecycle for this new event
     this.state.playbackMode = 'LIVE';
@@ -229,6 +236,9 @@ export class MockAgentRuntimeImpl implements AgentRuntime {
         this.state = { ...this.state, ...currentEvt.stateUpdates };
       }
     }
+
+    // Recompute response plan from latest state (incident/exits/occupancy may have just changed)
+    this.state.responsePlan = computeResponsePlan(this.state);
 
     // Add to event logs
     const newLog: EventLogEntry = {

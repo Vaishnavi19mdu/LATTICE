@@ -1,34 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../lib/firebase/authContext';
 import { useEmergency } from '../../context/EmergencyContext';
+import { useAutoRole } from '../../hooks/useAutoRole';
 import { getAllAgents } from '../../lib/interoperability/agentRegistry';
 import { runDemoScenario, SimulationRunResult } from '../../lib/interoperability/demoScenario';
 import { AgentDetailPage } from '../agents/AgentDetailPage';
 import { EmergencySimulationView } from '../../components/simulation/EmergencySimulationView';
 import { AgentInteractionSuite } from '../../components/simulation/AgentInteractionSuite';
 import { BuildingComparisonView } from '../../components/simulation/BuildingComparisonView';
-import { RoleSwitcher } from '../../components/simulation/RoleSwitcher';
 import { OperationsChatWidget } from '../../components/simulation/OperationsChatWidget';
 import { BuildingOperatorOverview } from '../../components/dashboard/BuildingOperatorOverview';
 import { NetworkOperatorOverview } from '../../components/dashboard/NetworkOperatorOverview';
+import { BuildingOperatorSettings } from '../../components/settings/BuildingOperatorSettings';
+import { NetworkAdministratorSettings } from '../../components/settings/NetworkAdministratorSettings';
 import { getRoleConfig } from '../../config/roleConfig';
 import { getProfileForRole } from '../../lib/auth/devAuth';
-import { 
-  Cpu, 
-  LayoutDashboard, 
-  Bot, 
-  ShieldAlert, 
-  GitMerge, 
-  Radio, 
-  LogOut, 
-  ArrowLeft, 
-  Building as BuildingIcon, 
-  CheckCircle2, 
-  Flame, 
-  Users, 
-  Shield, 
-  Brain, 
-  HeartHandshake, 
+import {
+  Cpu,
+  LayoutDashboard,
+  Bot,
+  ShieldAlert,
+  GitMerge,
+  Radio,
+  LogOut,
+  ArrowLeft,
+  Building as BuildingIcon,
+  CheckCircle2,
+  Flame,
+  Users,
+  Shield,
+  Brain,
+  HeartHandshake,
   Network,
   AlertTriangle,
   ArrowRight,
@@ -36,6 +38,7 @@ import {
   Columns,
   MessageSquare,
   UserCheck,
+  Settings as SettingsIcon,
   Menu,
   X
 } from 'lucide-react';
@@ -53,10 +56,26 @@ const AGENT_ICONS: Record<string, any> = {
   agent_cross_building: Network,
 };
 
+type DashboardTab =
+  | 'dashboard'
+  | 'agents'
+  | 'emergency'
+  | 'interaction'
+  | 'decision'
+  | 'network'
+  | 'comparison'
+  | 'chat'
+  | 'settings';
+
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLanding }) => {
-  const { logout, isDevAuth, toggleDevAuth } = useAuth();
+  const { logout } = useAuth();
   const { state } = useEmergency();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'agents' | 'emergency' | 'interaction' | 'decision' | 'network' | 'comparison' | 'chat'>('dashboard');
+
+  // Auto-assigns the signed-in account's role into EmergencyContext on load/login.
+  // RoleSwitcher below can still override it manually within the session (demo-only).
+  useAutoRole();
+
+  const [activeTab, setActiveTab] = useState<DashboardTab>('dashboard');
   const [inspectAgentId, setInspectAgentId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
@@ -96,6 +115,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
     );
   }
 
+  const navButtonClass = (tab: DashboardTab) =>
+    `w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
+      activeTab === tab
+        ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
+        : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
+    }`;
+
   return (
     <div className="min-h-screen bg-[#F3F3F3] text-[#423F4F] flex flex-col md:flex-row font-sans">
       {/* SIDEBAR NAVIGATION */}
@@ -126,19 +152,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
           {/* SIDEBAR CONTENT (Always visible on desktop, toggleable on mobile) */}
           <div className={`${isMobileMenuOpen ? 'block' : 'hidden md:block'}`}>
             {/* DEMO ROLE SWITCHER EMBEDDED IN SIDEBAR */}
-            <div className="p-4 border-b border-[#565E75]/30">
-              <RoleSwitcher />
-            </div>
+
 
             {/* Navigation Links */}
             <nav className="p-4 space-y-1 font-mono-tech text-xs uppercase tracking-wider">
               <button
                 onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                  activeTab === 'dashboard'
-                    ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                    : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                }`}
+                className={navButtonClass('dashboard')}
               >
                 <LayoutDashboard className="w-4 h-4 text-[#A99BC9]" />
                 <span>Overview</span>
@@ -146,11 +166,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
 
               <button
                 onClick={() => { setActiveTab('interaction'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                  activeTab === 'interaction'
-                    ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                    : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                }`}
+                className={navButtonClass('interaction')}
               >
                 <Zap className="w-4 h-4 text-[#E6B85C]" />
                 <span>Agent Interaction</span>
@@ -158,11 +174,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
 
               <button
                 onClick={() => { setActiveTab('emergency'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                  activeTab === 'emergency'
-                    ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                    : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                }`}
+                className={navButtonClass('emergency')}
               >
                 <ShieldAlert className="w-4 h-4 text-[#E26161]" />
                 <span>Emergency Simulation</span>
@@ -170,11 +182,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
 
               <button
                 onClick={() => { setActiveTab('decision'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                  activeTab === 'decision'
-                    ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                    : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                }`}
+                className={navButtonClass('decision')}
               >
                 <GitMerge className="w-4 h-4 text-[#E6B85C]" />
                 <span>Decision Control</span>
@@ -182,11 +190,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
 
               <button
                 onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                  activeTab === 'chat'
-                    ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                    : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                }`}
+                className={navButtonClass('chat')}
               >
                 <MessageSquare className="w-4 h-4 text-[#6B9FD4]" />
                 <span>Operations Chat</span>
@@ -197,11 +201,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
                 <>
                   <button
                     onClick={() => { setActiveTab('comparison'); setIsMobileMenuOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                      activeTab === 'comparison'
-                        ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                        : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                    }`}
+                    className={navButtonClass('comparison')}
                   >
                     <Columns className="w-4 h-4 text-[#7AE04C]" />
                     <span>Building Comparison</span>
@@ -209,11 +209,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
 
                   <button
                     onClick={() => { setActiveTab('network'); setIsMobileMenuOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                      activeTab === 'network'
-                        ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                        : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                    }`}
+                    className={navButtonClass('network')}
                   >
                     <Radio className="w-4 h-4 text-[#7AE04C]" />
                     <span>Network</span>
@@ -223,14 +219,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
 
               <button
                 onClick={() => { setActiveTab('agents'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
-                  activeTab === 'agents'
-                    ? 'bg-[#423F4F] text-[#F3F3F3] border border-[#565E75]'
-                    : 'text-[#F3F3F3]/70 hover:text-[#F3F3F3] hover:bg-[#423F4F]/40'
-                }`}
+                className={navButtonClass('agents')}
               >
                 <Bot className="w-4 h-4 text-[#6B9FD4]" />
                 <span>Agent Network</span>
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
+                className={navButtonClass('settings')}
+              >
+                <SettingsIcon className="w-4 h-4 text-[#A99BC9]" />
+                <span>Settings</span>
               </button>
             </nav>
 
@@ -297,6 +297,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
               {/* Action Buttons */}
               <div className="space-y-1.5 pt-1">
                 <button
+                  onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
+                  className="w-full py-2 px-3 bg-[#423F4F]/40 hover:bg-[#423F4F] text-[#F3F3F3]/80 hover:text-[#F3F3F3] border border-[#565E75]/30 rounded-[6px] text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9]"
+                >
+                  <SettingsIcon className="w-3.5 h-3.5 text-[#A99BC9]" />
+                  <span>ACCOUNT SETTINGS</span>
+                </button>
+
+                <button
                   onClick={onNavigateToLanding}
                   className="w-full py-2 px-3 bg-[#423F4F]/40 hover:bg-[#423F4F] text-[#F3F3F3]/80 hover:text-[#F3F3F3] border border-[#565E75]/30 rounded-[6px] text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9]"
                 >
@@ -319,30 +327,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* DEVELOPMENT MODE INDICATOR BANNER */}
-        {isDevAuth && (
-          <div className="bg-[#E6B85C]/20 border-b border-[#E6B85C]/40 px-4 sm:px-6 py-2 text-xs font-mono-tech flex flex-wrap items-center justify-between gap-2 text-[#292733]">
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold px-2 py-0.5 bg-[#E6B85C] text-[#292733] rounded text-[10px] sm:text-xs">
-                ⚡ DEV MODE
-              </span>
-              <span className="truncate">
-                Role: <strong>{profile.displayName}</strong>
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              {toggleDevAuth && (
-                <button
-                  onClick={toggleDevAuth}
-                  className="text-[10px] uppercase font-extrabold underline text-[#292733] hover:text-[#423F4F] cursor-pointer"
-                >
-                  Switch Auth
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* TOP BAR */}
         <header className="bg-white border-b border-[#423F4F]/10 px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
@@ -372,6 +356,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
               <p className="text-xs font-extrabold text-[#292733]">{profile.name}</p>
               <p className="text-[10px] text-[#565E75] uppercase font-bold">{profile.category} ({profile.scope})</p>
             </div>
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="p-2 rounded-[6px] border border-[#423F4F]/10 text-[#565E75] hover:text-[#292733] hover:bg-[#F3F3F3] transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9]"
+              aria-label="Open Settings"
+              title="Settings"
+            >
+              <SettingsIcon className="w-4 h-4" />
+            </button>
 
             <button
               onClick={onNavigateToLanding}
@@ -553,6 +546,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
               </div>
 
               <BuildingComparisonView />
+            </div>
+          )}
+
+          {/* TAB 9: SETTINGS TAB */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6">
+              {roleConfig.role === 'building_operator' ? (
+                <BuildingOperatorSettings />
+              ) : (
+                <NetworkAdministratorSettings />
+              )}
             </div>
           )}
         </main>

@@ -15,7 +15,7 @@ import { EntrySystemCloud } from './components/EntrySystemCloud';
 function MainApp() {
   const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard'>('landing');
   const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
-  const { isAuthenticated, isDevAuth, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   const handleEnterSystem = () => {
     if (isAuthenticated) {

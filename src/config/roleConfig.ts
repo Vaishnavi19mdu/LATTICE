@@ -1,4 +1,5 @@
 import { OperatorRole, OperatorRoleConfig } from '../types/role.types';
+import { UserProfile } from '../types/user.types';
 
 export const BUILDING_OPERATOR_CONFIG: OperatorRoleConfig = {
   id: 'demo-building-operator',
@@ -70,4 +71,44 @@ export function getRoleConfig(role: OperatorRole): OperatorRoleConfig {
     return BUILDING_OPERATOR_CONFIG;
   }
   return NETWORK_OPERATOR_CONFIG;
+}
+
+/**
+ * Maps a Firestore UserProfile (from useAuth().profile) to an OperatorRoleConfig.
+ *
+ * UserProfile.role is a union covering two different sources:
+ *   - Demo/dev profiles (devAuth.ts) set role directly to
+ *     'building_operator' | 'network_operator' | 'BUILDING_OPERATOR' | 'NETWORK_OPERATOR'
+ *     -> passed straight through to the matching config.
+ *   - Real signed-up accounts (SignupPage) only ever set role to
+ *     'operator' | 'administrator' -> mapped below:
+ *       'administrator' -> NETWORK_OPERATOR (multi-building access)
+ *       'operator'       -> BUILDING_OPERATOR (scoped to their signed-up buildingId)
+ *
+ * CONFIRM WITH PRODUCT: the operator/administrator mapping is a judgment call,
+ * not something derivable from the code — change it if the intended rule differs.
+ */
+export function getRoleConfigForAccount(profile: UserProfile | null | undefined): OperatorRoleConfig {
+  if (!profile) {
+    console.warn('getRoleConfigForAccount: no profile available, defaulting to BUILDING_OPERATOR');
+    return BUILDING_OPERATOR_CONFIG;
+  }
+
+  switch (profile.role) {
+    case 'building_operator':
+    case 'BUILDING_OPERATOR':
+      return BUILDING_OPERATOR_CONFIG;
+    case 'network_operator':
+    case 'NETWORK_OPERATOR':
+      return NETWORK_OPERATOR_CONFIG;
+    case 'administrator':
+      return NETWORK_OPERATOR_CONFIG;
+    case 'operator':
+      return BUILDING_OPERATOR_CONFIG;
+    default:
+      console.warn(
+        `getRoleConfigForAccount: unrecognized profile.role "${profile.role}", defaulting to BUILDING_OPERATOR`
+      );
+      return BUILDING_OPERATOR_CONFIG;
+  }
 }

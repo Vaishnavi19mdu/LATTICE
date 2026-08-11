@@ -1,7 +1,12 @@
 import { UserProfile, UserRole } from '../../types/user.types';
 
-export interface DevAuthUser extends UserProfile {
-  isMock: true;
+export interface SignupParams {
+  name: string;
+  email: string;
+  role: UserRole;
+  buildingId: string;
+  phone?: string;
+  password: string;
 }
 
 export interface AuthContextType {
@@ -9,11 +14,10 @@ export interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   isAuthenticated: boolean;
-  isDevAuth: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (params: any) => Promise<void>;
+  signup: (params: SignupParams) => Promise<void>;
   logout: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   error: string | null;
   clearError: () => void;
-  toggleDevAuth?: () => void;
 }

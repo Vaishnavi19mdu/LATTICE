@@ -41,18 +41,9 @@ export const NETWORK_OPERATOR_PROFILE: UserProfile = {
   permissions: NETWORK_OPERATOR_CONFIG.permissions,
 };
 
-export const DEV_MOCK_USER = BUILDING_OPERATOR_PROFILE;
-
 export function getProfileForRole(role: 'BUILDING_OPERATOR' | 'NETWORK_OPERATOR' | 'building_operator' | 'network_operator'): UserProfile {
   if (role === 'building_operator' || role === 'BUILDING_OPERATOR') {
     return BUILDING_OPERATOR_PROFILE;
   }
   return NETWORK_OPERATOR_PROFILE;
-}
-
-export function isDevAuthEnabled(): boolean {
-  if (import.meta.env.VITE_DEV_AUTH === 'false') {
-    return false;
-  }
-  return true;
 }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../lib/firebase/authContext';
-import { ArrowLeft, Cpu, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 
 interface LoginPageProps {
   onNavigateToSignup: () => void;
@@ -13,13 +13,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onNavigateToLanding,
   onLoginSuccess,
 }) => {
-  const { login, error: authError, clearError } = useAuth();
+  const { login, error: authError, clearError, resetPassword } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [forgotNotice, setForgotNotice] = useState<string | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,12 +48,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
   };
 
-  const handleForgotPassword = () => {
+  const handleForgotPassword = async () => {
     if (!email.trim()) {
       setFormError('Please enter your email address first to reset your password.');
       return;
     }
-    setForgotNotice(`Password reset instructions sent to ${email.trim()} (simulated).`);
+    setFormError(null);
+    setForgotNotice(null);
+    clearError();
+
+    setIsSendingReset(true);
+    try {
+      await resetPassword(email.trim());
+      setForgotNotice(`Password reset instructions sent to ${email.trim()}.`);
+    } catch (err: any) {
+      // Error handled via AuthContext error state
+    } finally {
+      setIsSendingReset(false);
+    }
   };
 
   const displayError = formError || authError;
@@ -130,9 +143,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="font-mono-tech text-[10px] text-[#565E75] hover:text-[#292733] underline cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] focus-visible:outline-offset-2 rounded px-1"
+                  disabled={isSendingReset}
+                  className="font-mono-tech text-[10px] text-[#565E75] hover:text-[#292733] underline cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] focus-visible:outline-offset-2 rounded px-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Forgot password?
+                  {isSendingReset ? 'Sending...' : 'Forgot password?'}
                 </button>
               </div>
               <input

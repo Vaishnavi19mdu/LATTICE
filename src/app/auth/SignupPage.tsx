@@ -20,7 +20,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [buildingId, setBuildingId] = useState('');
-  const [role, setRole] = useState<UserRole>('operator');
+  const [role, setRole] = useState<UserRole>('building_operator');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -42,7 +42,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({
       setFormError('Please enter a valid email address.');
       return;
     }
-    if (!buildingId) {
+    if (role !== 'network_operator' && !buildingId) {
       setFormError('Please select a building / block.');
       return;
     }
@@ -65,7 +65,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({
         name: name.trim(),
         email: email.trim(),
         role,
-        buildingId,
+        buildingId: role === 'network_operator' ? '' : buildingId,
         phone: phone.trim(),
         password,
       });
@@ -151,26 +151,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({
               />
             </div>
 
-            {/* Building Selection */}
-            <div>
-              <label className="block text-xs font-mono-tech font-bold uppercase text-[#565E75] mb-1">
-                Building / Block <span className="text-[#E26161]">*</span>
-              </label>
-              <select
-                value={buildingId}
-                onChange={(e) => setBuildingId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#F3F3F3] border border-[#423F4F]/20 rounded-[6px] text-xs font-sans text-[#292733] focus:bg-white focus:border-[#423F4F] focus-visible:outline-2 focus-visible:outline-[#A99BC9] focus-visible:outline-offset-2 transition-all"
-                required
-              >
-                <option value="">[ Select Building / Block ▼ ]</option>
-                {BUILDINGS_LIST.map((b) => (
-                  <option key={b.id} value={b.buildingId}>
-                    {b.name} ({b.floors} Floors)
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Role Selection */}
             <div>
               <label className="block text-xs font-mono-tech font-bold uppercase text-[#565E75] mb-1">
@@ -178,14 +158,49 @@ export const SignupPage: React.FC<SignupPageProps> = ({
               </label>
               <select
                 value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
+                onChange={(e) => {
+                  const nextRole = e.target.value as UserRole;
+                  setRole(nextRole);
+                  if (nextRole === 'network_operator') {
+                    setBuildingId('');
+                  }
+                }}
                 className="w-full px-3.5 py-2.5 bg-[#F3F3F3] border border-[#423F4F]/20 rounded-[6px] text-xs font-sans text-[#292733] focus:bg-white focus:border-[#423F4F] focus-visible:outline-2 focus-visible:outline-[#A99BC9] focus-visible:outline-offset-2 transition-all"
                 required
               >
-                <option value="operator">Operator (Monitoring & Plan Approvals)</option>
+                <option value="building_operator">Building Operator (Single-Building Monitoring & Plan Approvals)</option>
+                <option value="network_operator">Network Operator (Multi-Building / Campus Mesh Oversight)</option>
                 <option value="administrator">Administrator (System Configuration)</option>
               </select>
             </div>
+
+            {/* Building Selection — not applicable to Network Operators, who oversee all buildings */}
+            {role !== 'network_operator' && (
+              <div>
+                <label className="block text-xs font-mono-tech font-bold uppercase text-[#565E75] mb-1">
+                  Building / Block <span className="text-[#E26161]">*</span>
+                </label>
+                <select
+                  value={buildingId}
+                  onChange={(e) => setBuildingId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[#F3F3F3] border border-[#423F4F]/20 rounded-[6px] text-xs font-sans text-[#292733] focus:bg-white focus:border-[#423F4F] focus-visible:outline-2 focus-visible:outline-[#A99BC9] focus-visible:outline-offset-2 transition-all"
+                  required
+                >
+                  <option value="">[ Select Building / Block ▼ ]</option>
+                  {BUILDINGS_LIST.map((b) => (
+                    <option key={b.id} value={b.buildingId}>
+                      {b.name} ({b.floors} Floors)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {role === 'network_operator' && (
+              <div className="p-3 bg-[#F3F3F3] rounded-[6px] border border-[#423F4F]/10 font-mono-tech text-[10px] text-[#565E75]">
+                Network Operators oversee the full campus mesh and are not scoped to a single building, so no building selection is needed.
+              </div>
+            )}
 
             {/* Phone (Optional) */}
             <div>

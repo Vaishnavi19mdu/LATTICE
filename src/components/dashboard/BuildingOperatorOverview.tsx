@@ -26,7 +26,7 @@ interface BuildingOperatorOverviewProps {
 
 export const BuildingOperatorOverview: React.FC<BuildingOperatorOverviewProps> = ({ onNavigateTab }) => {
   const { state, injectOperatorIntervention } = useEmergency();
-  const { incident, occupancy, exits, crossBuildingAlerts, operatorIntervention } = state;
+  const { incident, occupancy, exits, crossBuildingAlerts, operatorIntervention, responsePlan } = state;
 
   const [planStatus, setPlanStatus] = useState<'AWAITING OPERATOR REVIEW' | 'APPROVED' | 'REJECTED' | 'MODIFICATION REQUESTED'>('AWAITING OPERATOR REVIEW');
   const [showModifyInput, setShowModifyInput] = useState(false);
@@ -34,6 +34,9 @@ export const BuildingOperatorOverview: React.FC<BuildingOperatorOverviewProps> =
 
   const isFireActive = incident.severity === 'high' || incident.severity === 'critical';
   const hasCrossAlert = crossBuildingAlerts.length > 0;
+
+  const availableExit = (['A', 'B', 'C'] as const).find((k) => exits[k] === 'available');
+  const blockedExit = (['A', 'B', 'C'] as const).find((k) => exits[k] === 'blocked' || exits[k] === 'unsafe');
 
   const handleApprove = () => {
     setPlanStatus('APPROVED');
@@ -111,9 +114,9 @@ export const BuildingOperatorOverview: React.FC<BuildingOperatorOverviewProps> =
               <span className="text-[#565E75] uppercase text-[10px] font-bold block">INCIDENT LOCATION</span>
               <div className="text-sm font-extrabold text-[#E26161] flex items-center gap-1.5">
                 <Flame className="w-4 h-4 fill-current" />
-                <span>Floor 4 Fire</span>
+                <span>Floor {incident.floor} {incident.type === 'fire' ? 'Fire' : incident.type}</span>
               </div>
-              <span className="text-[10px] text-[#E26161] font-bold block">HAZARD: HIGH</span>
+              <span className="text-[10px] text-[#E26161] font-bold block">HAZARD: {incident.severity.toUpperCase()}</span>
             </div>
 
             {/* Occupants */}
@@ -121,10 +124,10 @@ export const BuildingOperatorOverview: React.FC<BuildingOperatorOverviewProps> =
               <span className="text-[#565E75] uppercase text-[10px] font-bold block">OCCUPANCY & ASSISTANCE</span>
               <div className="text-sm font-extrabold text-[#292733] flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-[#A99BC9]" />
-                <span>42 Occupants</span>
+                <span>{occupancy.total} Occupants</span>
               </div>
               <span className="text-[10px] text-[#A99BC9] font-bold block">
-                3 Registered Mobility Requirements
+                {occupancy.assistanceRequired} Registered Mobility Requirements
               </span>
             </div>
 
@@ -133,10 +136,10 @@ export const BuildingOperatorOverview: React.FC<BuildingOperatorOverviewProps> =
               <span className="text-[#565E75] uppercase text-[10px] font-bold block">PRIMARY EGRESS</span>
               <div className="text-sm font-extrabold text-[#292733] flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-[#7AE04C]" />
-                <span>Exit B (North Stairwell)</span>
+                <span>{availableExit ? `Exit ${availableExit}` : 'None Available'}</span>
               </div>
               <span className="text-[10px] text-[#7AE04C] font-bold block">
-                ✓ VERIFIED UNOBSTRUCTED
+                {availableExit ? '✓ VERIFIED UNOBSTRUCTED' : '— NO CLEAR ROUTE'}
               </span>
             </div>
 
@@ -145,10 +148,10 @@ export const BuildingOperatorOverview: React.FC<BuildingOperatorOverviewProps> =
               <span className="text-[#565E75] uppercase text-[10px] font-bold block">BLOCKED EXIT</span>
               <div className="text-sm font-extrabold text-[#E26161] flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-[#E26161]" />
-                <span>Exit A (South Corridor)</span>
+                <span>{blockedExit ? `Exit ${blockedExit}` : 'None Blocked'}</span>
               </div>
               <span className="text-[10px] text-[#E26161] font-bold block">
-                ⛔ BLOCKED BY SMOKE
+                {blockedExit ? '⛔ BLOCKED BY SMOKE' : '— ALL CLEAR'}
               </span>
             </div>
           </div>
@@ -250,22 +253,22 @@ export const BuildingOperatorOverview: React.FC<BuildingOperatorOverviewProps> =
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 font-mono-tech text-xs">
           <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10">
             <span className="text-[#565E75] uppercase text-[10px] font-bold block">SEVERITY</span>
-            <span className="font-extrabold text-[#E26161]">CRITICAL</span>
+            <span className="font-extrabold text-[#E26161]">{responsePlan?.emergencyLevel ?? '—'}</span>
           </div>
 
           <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10">
             <span className="text-[#565E75] uppercase text-[10px] font-bold block">PRIMARY ROUTE</span>
-            <span className="font-extrabold text-[#7AE04C]">EXIT B</span>
+            <span className="font-extrabold text-[#7AE04C]">{responsePlan?.safeRoutes[0] ?? 'None'}</span>
           </div>
 
           <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10">
             <span className="text-[#565E75] uppercase text-[10px] font-bold block">BLOCKED ROUTE</span>
-            <span className="font-extrabold text-[#E26161]">EXIT A</span>
+            <span className="font-extrabold text-[#E26161]">{responsePlan?.blockedRoutes[0] ?? 'None'}</span>
           </div>
 
           <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10">
             <span className="text-[#565E75] uppercase text-[10px] font-bold block">ASSISTANCE</span>
-            <span className="font-extrabold text-[#292733]">FLOOR 4 WEST</span>
+            <span className="font-extrabold text-[#292733]">{occupancy.assistanceRequired > 0 ? `${occupancy.assistanceRequired} REGISTERED` : 'NONE'}</span>
           </div>
         </div>
 
