@@ -10,29 +10,34 @@ import { SystemModal } from './components/SystemModal';
 import { LoginPage } from './app/auth/LoginPage';
 import { SignupPage } from './app/auth/SignupPage';
 import { DashboardPage } from './app/dashboard/DashboardPage';
+import { AdministratorDashboard } from './components/dashboard/Administrator';
 import { EntrySystemCloud } from './components/EntrySystemCloud';
 
+type AppView = 'landing' | 'login' | 'signup' | 'dashboard' | 'admin-dashboard';
+
 function MainApp() {
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'signup' | 'dashboard'>('landing');
+  const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, logout, profile } = useAuth();
+
+  const isAdmin = profile?.role === 'administrator';
+  const destinationView: AppView = isAdmin ? 'admin-dashboard' : 'dashboard';
 
   const handleEnterSystem = () => {
     if (isAuthenticated) {
-      setCurrentView('dashboard');
+      setCurrentView(destinationView);
     } else {
       setCurrentView('login');
     }
   };
 
-
-  // If user navigated to dashboard while logged out, show login
-  if (currentView === 'dashboard' && !loading && !isAuthenticated) {
+  // If user navigated to a protected view while logged out, show login
+  if ((currentView === 'dashboard' || currentView === 'admin-dashboard') && !loading && !isAuthenticated) {
     return (
       <LoginPage
         onNavigateToSignup={() => setCurrentView('signup')}
         onNavigateToLanding={() => setCurrentView('landing')}
-        onLoginSuccess={() => setCurrentView('dashboard')}
+        onLoginSuccess={() => setCurrentView(destinationView)}
       />
     );
   }
@@ -42,7 +47,7 @@ function MainApp() {
       <LoginPage
         onNavigateToSignup={() => setCurrentView('signup')}
         onNavigateToLanding={() => setCurrentView('landing')}
-        onLoginSuccess={() => setCurrentView('dashboard')}
+        onLoginSuccess={() => setCurrentView(destinationView)}
       />
     );
   }
@@ -52,13 +57,22 @@ function MainApp() {
       <SignupPage
         onNavigateToLogin={() => setCurrentView('login')}
         onNavigateToLanding={() => setCurrentView('landing')}
-        onSignupSuccess={() => setCurrentView('dashboard')}
+        onSignupSuccess={() => setCurrentView(destinationView)}
       />
     );
   }
 
   if (currentView === 'dashboard') {
     return <DashboardPage onNavigateToLanding={() => setCurrentView('landing')} />;
+  }
+
+  if (currentView === 'admin-dashboard') {
+    return (
+      <AdministratorDashboard
+        onNavigateToLanding={() => setCurrentView('landing')}
+        onLogout={logout}
+      />
+    );
   }
 
   return (
@@ -70,31 +84,24 @@ function MainApp() {
       <Navbar
         onOpenSystemModal={handleEnterSystem}
         onNavigateToLogin={() => {
-          if (isAuthenticated) setCurrentView('dashboard');
+          if (isAuthenticated) setCurrentView(destinationView);
           else setCurrentView('login');
         }}
         onNavigateToSignup={() => {
-          if (isAuthenticated) setCurrentView('dashboard');
+          if (isAuthenticated) setCurrentView(destinationView);
           else setCurrentView('signup');
         }}
       />
 
       {/* Main Content Area */}
       <main className="flex-grow">
-        {/* SECTION 1: HERO */}
         <HeroSection onOpenSystemModal={handleEnterSystem} />
-
-        {/* SECTION 2: VISUAL CORE */}
         <VisualCoreSection />
-
-        {/* SECTION 3: HOW LATTICE WORKS */}
         <HowItWorksSection />
       </main>
 
-      {/* Footer */}
       <Footer />
 
-      {/* System Modal */}
       <SystemModal
         isOpen={isSystemModalOpen}
         onClose={() => setIsSystemModalOpen(false)}
