@@ -535,12 +535,65 @@ const SummaryCard: React.FC<{ label: string; value: string; sub?: string; accent
   </div>
 );
 
-const SectionHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
-  <div className="bg-white p-6 rounded-[8px] border border-[#423F4F]/10 shadow-sm">
-    <h1 className="text-2xl font-extrabold text-[#292733] mb-1">{title}</h1>
-    <p className="text-xs text-[#565E75]">{subtitle}</p>
+const SectionHeader: React.FC<{ title: string; subtitle: string; right?: React.ReactNode }> = ({ title, subtitle, right }) => (
+  <div className="bg-white p-6 rounded-[8px] border border-[#423F4F]/10 shadow-sm flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 className="text-2xl font-extrabold text-[#292733] mb-1">{title}</h1>
+      <p className="text-xs text-[#565E75]">{subtitle}</p>
+    </div>
+    {right && <div className="shrink-0">{right}</div>}
   </div>
 );
+
+/* ============================================================================
+   LIVE FEED STATUS WIDGET
+   (Pulsing "live" indicator + the most recent event's id and timestamp —
+   derived straight from ACTIVITY_FEED, no separate mock source.)
+   ========================================================================== */
+
+const LiveFeedStatus: React.FC<{ latestEvent: ActivityEvent }> = ({ latestEvent }) => {
+  const [clock, setClock] = useState(() => new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const clockStr = clock.toLocaleTimeString('en-GB', { hour12: false });
+
+  return (
+    <div className="flex items-center gap-5 px-5 py-3 bg-[#292733] rounded-[8px] border border-[#565E75]/30 font-mono-tech">
+      <div className="flex items-center gap-2">
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#7AE04C] opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#7AE04C]"></span>
+        </span>
+        <span className="text-[11px] font-extrabold text-[#7AE04C] tracking-widest uppercase">Live</span>
+      </div>
+
+      <div className="w-px h-8 bg-[#565E75]/30"></div>
+
+      <div>
+        <span className="text-[9px] text-[#A99BC9] uppercase font-bold block tracking-wide">Last Event ID</span>
+        <span className="text-xs font-extrabold text-[#F3F3F3]">#{latestEvent.id}</span>
+      </div>
+
+      <div className="w-px h-8 bg-[#565E75]/30"></div>
+
+      <div>
+        <span className="text-[9px] text-[#A99BC9] uppercase font-bold block tracking-wide">Event Time</span>
+        <span className="text-xs font-extrabold text-[#F3F3F3]">{latestEvent.time}</span>
+      </div>
+
+      <div className="w-px h-8 bg-[#565E75]/30"></div>
+
+      <div>
+        <span className="text-[9px] text-[#A99BC9] uppercase font-bold block tracking-wide">System Clock</span>
+        <span className="text-xs font-extrabold text-[#F3F3F3] tabular-nums">{clockStr}</span>
+      </div>
+    </div>
+  );
+};
 
 /* ============================================================================
    MAIN COMPONENT
@@ -968,7 +1021,11 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
           {/* ---------- LIVE ACTIVITY ---------- */}
           {activeTab === 'activity' && (
             <div className="space-y-6">
-              <SectionHeader title="LIVE SYSTEM ACTIVITY" subtitle="Real-time feed combining human, agent, system, emergency, and override activity." />
+              <SectionHeader
+                title="LIVE SYSTEM ACTIVITY"
+                subtitle="Real-time feed combining human, agent, system, emergency, and override activity."
+                right={<LiveFeedStatus latestEvent={ACTIVITY_FEED[0]} />}
+              />
               <div className="bg-[#292733] rounded-[8px] border border-[#423F4F] p-4 sm:p-6 space-y-3 max-h-[640px] overflow-y-auto">
                 {ACTIVITY_FEED.slice(0, visibleActivityCount).map((ev) => {
                   const t = ACTIVITY_TYPE_STYLES[ev.type];
