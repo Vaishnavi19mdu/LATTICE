@@ -15,6 +15,8 @@ import { BuildingOperatorSettings } from '../../components/settings/BuildingOper
 import { NetworkAdministratorSettings } from '../../components/settings/NetworkAdministratorSettings';
 import { getRoleConfig } from '../../config/roleConfig';
 import { getProfileForRole } from '../../lib/auth/devAuth';
+import { SOSIndicator } from '../../sos/SOSIndicator';
+import { SOSPage } from '../../sos/SOSPage';
 import {
   Cpu,
   LayoutDashboard,
@@ -40,7 +42,8 @@ import {
   UserCheck,
   Settings as SettingsIcon,
   Menu,
-  X
+  X,
+  PhoneCall
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -65,6 +68,7 @@ type DashboardTab =
   | 'network'
   | 'comparison'
   | 'chat'
+  | 'sos'
   | 'settings';
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLanding }) => {
@@ -227,6 +231,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
               </button>
 
               <button
+                onClick={() => { setActiveTab('sos'); setIsMobileMenuOpen(false); }}
+                className={navButtonClass('sos')}
+              >
+                <PhoneCall className="w-4 h-4 text-[#E26161]" />
+                <span>SOS</span>
+              </button>
+
+              <button
                 onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
                 className={navButtonClass('settings')}
               >
@@ -349,6 +361,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
               </span>
               <span className="text-[#292733] whitespace-nowrap">● 6 AGENTS ONLINE</span>
             </div>
+
+            {/* SOS status — appears only once triggered by the fire simulation */}
+            <SOSIndicator />
           </div>
 
           {/* User Metadata & Landing Page Button */}
@@ -547,6 +562,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
               </div>
 
               <BuildingComparisonView />
+            </div>
+          )}
+
+          {/* TAB SOS: EMERGENCY SOS RESPONSE TAB */}
+          {activeTab === 'sos' && (
+            <div className="space-y-6">
+              <SOSPage />
             </div>
           )}
 

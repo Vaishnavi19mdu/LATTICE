@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './lib/firebase/authContext';
 import { EmergencyProvider } from './context/EmergencyContext';
+import { SOSProvider } from './sos/SOSContext';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { VisualCoreSection } from './components/VisualCoreSection';
@@ -115,7 +116,9 @@ export default function App() {
   return (
     <AuthProvider>
       <EmergencyProvider>
-        <MainApp />
+        <SOSProvider>
+          <MainApp />
+        </SOSProvider>
       </EmergencyProvider>
     </AuthProvider>
   );
