@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { PhoneCall, Flame, Clock, ShieldAlert } from 'lucide-react';
 import { useSOS } from './SOSContext';
 import { useEmergency } from '../context/EmergencyContext'; // adjust path if needed
@@ -13,6 +13,30 @@ export const SOSPage: React.FC = () => {
     type?: string;
     severity?: string;
   };
+
+  // Prevent firing the auto-dial more than once per incident
+  const hasAutoDialedRef = useRef(false);
+
+  useEffect(() => {
+    if (sosStatus === 'READY_TO_DIAL' && !hasAutoDialedRef.current) {
+      hasAutoDialedRef.current = true;
+
+      // Decide which service to auto-open based on incident type
+      const isFire = incident?.type?.toLowerCase().includes('fire');
+      const number = isFire ? '101' : '100';
+
+      // This opens the phone's own native dialer, pre-filled with the number.
+      // The user only has to tap THEIR phone's own green call button —
+      // no browser/webpage can place the call itself, that's an OS-level
+      // restriction on every platform (iOS, Android, desktop).
+      window.location.href = `tel:${number}`;
+    }
+
+    // Reset the guard whenever the incident clears, so a future spike can retrigger
+    if (sosStatus === 'IDLE') {
+      hasAutoDialedRef.current = false;
+    }
+  }, [sosStatus, incident?.type]);
 
   const statusColor =
     sosStatus === 'SOUNDING'
@@ -88,7 +112,7 @@ export const SOSPage: React.FC = () => {
         </div>
       </div>
 
-      {/* EMERGENCY CALL BUTTONS */}
+      {/* EMERGENCY CALL BUTTONS (fallback, still tappable manually) */}
       <div className="bg-[#292733] p-6 rounded-[8px] border border-[#423F4F] shadow-md space-y-4">
         <h2 className="font-mono-tech text-xs font-bold text-[#A99BC9] uppercase tracking-wider">
           Direct Emergency Contact
@@ -110,8 +134,10 @@ export const SOSPage: React.FC = () => {
           </a>
         </div>
         <p className="text-[10px] text-[#A99BC9] font-mono-tech leading-relaxed">
-          These buttons dial directly on mobile browsers. On desktop, they'll open your system's
-          default calling app if one is configured — browsers can't place phone calls on their own.
+          As soon as SOS status hits READY_TO_DIAL, your phone's native call app opens
+          automatically with the number already filled in — you only tap the phone's own
+          Call button. These buttons below are just a manual fallback if that didn't fire
+          (e.g. desktop browser with no phone app, or blocked auto-navigation).
         </p>
       </div>
     </div>
