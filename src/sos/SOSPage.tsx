@@ -14,29 +14,22 @@ export const SOSPage: React.FC = () => {
     severity?: string;
   };
 
-  // Prevent firing the auto-dial more than once per incident
+  // Prevent firing the auto-dial more than once per mount
   const hasAutoDialedRef = useRef(false);
 
   useEffect(() => {
-    if (sosStatus === 'READY_TO_DIAL' && !hasAutoDialedRef.current) {
-      hasAutoDialedRef.current = true;
+    if (hasAutoDialedRef.current) return;
+    hasAutoDialedRef.current = true;
 
-      // Decide which service to auto-open based on incident type
-      const isFire = incident?.type?.toLowerCase().includes('fire');
-      const number = isFire ? '101' : '100';
+    // TEMP: fires unconditionally on mount, ignoring sosStatus entirely,
+    // so you can confirm the tel: navigation itself works before wiring
+    // the status gate back in.
+    const isFire = incident?.type?.toLowerCase().includes('fire');
+    const number = isFire ? '101' : '100';
 
-      // This opens the phone's own native dialer, pre-filled with the number.
-      // The user only has to tap THEIR phone's own green call button —
-      // no browser/webpage can place the call itself, that's an OS-level
-      // restriction on every platform (iOS, Android, desktop).
-      window.location.href = `tel:${number}`;
-    }
-
-    // Reset the guard whenever the incident clears, so a future spike can retrigger
-    if (sosStatus === 'IDLE') {
-      hasAutoDialedRef.current = false;
-    }
-  }, [sosStatus, incident?.type]);
+    console.log('[SOS] attempting tel: navigation to', number);
+    window.location.href = `tel:${number}`;
+  }, []);
 
   const statusColor =
     sosStatus === 'SOUNDING'
