@@ -1,10 +1,11 @@
 import { FireHazardInput, FireHazardAssessment, SeverityLevel, HazardType } from './fireHazard.types';
+import { predictFireSpread } from './fireSpreadModel';
 
 export function evaluateFireHazard(input: FireHazardInput): FireHazardAssessment {
   const reasoning: string[] = [];
   let score = 0;
   let dataPointsCount = 0;
-  
+
   const location = input.location || 'Unspecified Zone';
   const smoke = input.smokeLevel ?? null;
   const temp = input.temperature ?? null;
@@ -72,8 +73,25 @@ export function evaluateFireHazard(input: FireHazardInput): FireHazardAssessment
     }
   }
 
-  // Normalize score max 100
+  // Normalize sensor-only score to max 100
   score = Math.min(100, score);
+
+  // 5. Optional room/object context blend (fire-spread severity model)
+  let fireSpreadPrediction: FireHazardAssessment['fireSpreadPrediction'];
+  if (input.fireSpreadContext) {
+    dataPointsCount++;
+    fireSpreadPrediction = predictFireSpread(input.fireSpreadContext);
+
+    reasoning.push(
+      `Room-context fire-spread model rates ${input.fireSpreadContext.room} (${input.fireSpreadContext.objects}) as ${fireSpreadPrediction.severity} risk (score ${fireSpreadPrediction.riskScore}/100), factoring ventilation (${input.fireSpreadContext.ventilation}), fire load, explosion risk, and escape difficulty.`
+    );
+
+    // Blend: live sensor readings stay primary (70%), room/object context
+    // adjusts the picture (30%) — contextual risk alone shouldn't override
+    // what live sensors are actually reporting, but should meaningfully
+    // shift the assessment.
+    score = Math.round(score * 0.7 + fireSpreadPrediction.riskScore * 0.3);
+  }
 
   // Severity Determination
   let severity: SeverityLevel = 'LOW';
@@ -128,5 +146,6 @@ export function evaluateFireHazard(input: FireHazardInput): FireHazardAssessment
     confidence: Number(confidence.toFixed(2)),
     reasoning,
     recommendedAction,
+    fireSpreadPrediction,
   };
 }

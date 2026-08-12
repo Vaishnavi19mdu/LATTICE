@@ -50,19 +50,8 @@ export class GroqProvider implements AIProvider {
       return MOCK_RESPONSE;
     }
 
-    const systemMessage = [
-      `You are agent "${agentId}" in the LATTICE emergency coordination system.`,
-      '',
-      'Analyze the supplied emergency event and current state.',
-      'Respond with a concise operational assessment.',
-      'Do not invent sensor readings or facts that are not present in the supplied state.',
-    ].join('\n');
-
-    const userMessage = [
-      `Event / prompt: ${prompt}`,
-      '',
-      `Current state (JSON): ${safeStringify(currentState)}`,
-    ].join('\n');
+    const systemMessage = buildSystemMessage(agentId, currentState);
+    const userMessage = buildUserMessage(prompt, currentState);
 
     try {
       const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
@@ -78,7 +67,7 @@ export class GroqProvider implements AIProvider {
             { role: 'user', content: userMessage },
           ],
           temperature: 0.4,
-          max_tokens: 300,
+          max_tokens: 450,
         }),
       });
 
@@ -102,6 +91,44 @@ export class GroqProvider implements AIProvider {
       return safeFallback();
     }
   }
+}
+
+/**
+ * Builds the system prompt fresh on every call from whatever is actually
+ * in `currentState` — it never hardcodes field names, so it stays correct
+ * as SharedEmergencyState grows (occupancy, exits, responsePlan, etc. all
+ * get named automatically without touching this function). This also
+ * widens the assistant's scope: LATTICE operators ask both "what's
+ * happening right now" (the active incident) and general building-ops
+ * questions ("how many exits does Building A have", "what can the
+ * Security Agent do") that aren't tied to any live event.
+ */
+function buildSystemMessage(agentId: string, currentState: SharedEmergencyState): string {
+  const availableFields = Object.keys(currentState ?? {}).filter(
+    (key) => currentState[key] !== undefined && currentState[key] !== null
+  );
+  const fieldSummary =
+    availableFields.length > 0
+      ? `Live state currently includes: ${availableFields.join(', ')}.`
+      : 'No live state fields are currently populated.';
+
+  return [
+    `You are agent "${agentId}" in the LATTICE emergency coordination and building-operations system.`,
+    '',
+    'You answer two kinds of operator questions:',
+    '  1. Questions about the live emergency event in progress — hazard severity, occupancy, exit/route status, the response plan.',
+    '  2. General building-operations questions not tied to a specific active incident — building layout, exits, agent capabilities, standard procedures.',
+    '',
+    fieldSummary,
+    'Ground every answer only in the fields actually present in the supplied state JSON below — never invent sensor readings, occupant counts, exit statuses, or other facts that are not there.',
+    "If the operator asks something the current state doesn't cover, say so plainly and note what would need to be checked instead of guessing.",
+    '',
+    'Format the response in markdown — use headers, bold, and bullet or numbered lists where they aid readability. Keep it concise and operational, not conversational filler.',
+  ].join('\n');
+}
+
+function buildUserMessage(prompt: string, currentState: SharedEmergencyState): string {
+  return [`Operator question: ${prompt}`, '', `Current live state (JSON): ${safeStringify(currentState)}`].join('\n');
 }
 
 function safeFallback(): string {
