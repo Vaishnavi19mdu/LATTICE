@@ -8,7 +8,6 @@ import {
   LogOut,
   ArrowLeft,
   Building as BuildingIcon,
-  CheckCircle2,
   Flame,
   Users,
   Shield,
@@ -26,7 +25,6 @@ import {
   Activity,
   Wifi,
   WifiOff,
-  XCircle,
   FileEdit,
   Server,
   Lock,
@@ -35,12 +33,24 @@ import {
   UsersRound,
   Database,
   Radio,
-  CircleDot,
   Eye,
+  Plus,
 } from 'lucide-react';
+
+// Import centralized building and agent store types directly to avoid
+// duplicate identifier issues while keeping the dashboard aligned with
+// the shared data layer.
+import { useBuildings, type BuildingRecord } from '../../data/buildingStore';
+import { useAgentRegistry, type AgentRecord } from '../../data/agentRegistryStore';
+import { AddBuildingModal } from '../../components/admin/AddBuildingModal';
+import { AddAgentModal } from '../../components/admin/AddAgentModal';
+import { AIProviderStatusPanel } from '../../components/admin/AIProviderStatusPanel';
 
 /* ============================================================================
    TYPES
+   (Building and Agent types now live in ./data/buildingStore and
+   ./data/agentRegistryStore — the single source of truth for both, per the
+   "no duplicate types / no duplicate registries" requirement.)
    ========================================================================== */
 
 type AdminTab =
@@ -54,12 +64,10 @@ type AdminTab =
   | 'audit'
   | 'settings';
 
-type BuildingStatus = 'CRITICAL' | 'WARNING' | 'OPERATIONAL';
-type AgentStatus = 'online' | 'degraded' | 'offline' | 'unknown';
-type DecisionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'MODIFIED';
 type PersonStatus = 'online' | 'offline';
 type ActivityType = 'human' | 'agent' | 'system' | 'emergency' | 'override';
 type IncidentStatus = 'ACTIVE' | 'RESOLVED' | 'NORMAL';
+type DecisionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'MODIFIED';
 type AuditCategory = 'agent' | 'emergency' | 'decision' | 'override' | 'failure' | 'auth' | 'system';
 
 interface PersonData {
@@ -67,42 +75,13 @@ interface PersonData {
   name: string;
   role: string;
   department: string;
-  building: string; // "Building A" | "Building B" | "Building C" | "Entire LATTICE System"
+  building: string;
   status: PersonStatus;
   currentActivity: string;
   lastAction: string;
   lastActive: string;
   accessLevel: string;
   avatar: string;
-}
-
-interface SysBuildingData {
-  id: string;
-  code: 'A' | 'B' | 'C';
-  name: string;
-  type: string;
-  status: BuildingStatus;
-  operator: string;
-  occupancy: number;
-  hazard: 'None' | 'Low' | 'Medium' | 'High';
-  agentsOnline: number;
-  agentsTotal: number;
-  response: string;
-  lastEvent: string;
-  connectivity: 'live' | 'degraded' | 'offline';
-}
-
-interface SysAgentData {
-  id: string;
-  name: string;
-  building: 'Building A' | 'Building B' | 'Building C' | 'System';
-  capability: string;
-  currentTask: string;
-  status: AgentStatus;
-  confidence: number | null;
-  lastMessage: string;
-  latencyMs: number | null;
-  icon: any;
 }
 
 interface ActivityEvent {
@@ -154,152 +133,20 @@ interface AuditEvent {
   actor: string;
 }
 
-interface SystemHealthItem {
-  id: string;
-  label: string;
-  status: 'healthy' | 'degraded' | 'down';
-  detail: string;
-  icon: any;
-}
-
 interface AdministratorDashboardProps {
   onNavigateToLanding: () => void;
   onLogout?: () => void;
 }
 
 /* ============================================================================
-   CENTRALIZED MOCK DATA
-   (Swap for live Firebase / interoperability-layer data later. Everything the
-   UI renders is derived from these arrays so there is a single source of truth.)
+   CENTRALIZED MOCK DATA — unchanged from the existing dashboard
    ========================================================================== */
 
 const PEOPLE: PersonData[] = [
-  {
-    id: 'p_vaishnavi',
-    name: 'Vaishnavi',
-    role: 'Building Operator',
-    department: 'Building Operations',
-    building: 'Building A',
-    status: 'online',
-    currentActivity: 'Monitoring Floor 4',
-    lastAction: 'Approved evacuation route',
-    lastActive: '2 min ago',
-    accessLevel: 'Building-level',
-    avatar: 'V',
-  },
-  {
-    id: 'p_arun',
-    name: 'Arun',
-    role: 'Building Operator',
-    department: 'Building Operations',
-    building: 'Building B',
-    status: 'online',
-    currentActivity: 'Monitoring building state',
-    lastAction: 'Reviewed security alert',
-    lastActive: '5 min ago',
-    accessLevel: 'Building-level',
-    avatar: 'A',
-  },
-  {
-    id: 'p_priya',
-    name: 'Priya',
-    role: 'Building Operator',
-    department: 'Building Operations',
-    building: 'Building C',
-    status: 'offline',
-    currentActivity: '—',
-    lastAction: 'Logged out',
-    lastActive: '1 hr ago',
-    accessLevel: 'Building-level',
-    avatar: 'P',
-  },
-  {
-    id: 'p_sysadmin',
-    name: 'System Administrator',
-    role: 'System Administrator',
-    department: 'System Administration',
-    building: 'Entire LATTICE System',
-    status: 'online',
-    currentActivity: 'System monitoring',
-    lastAction: 'Reviewed pending decision (Mutual aid — Building A)',
-    lastActive: 'Just now',
-    accessLevel: 'System-wide',
-    avatar: '🌐',
-  },
-];
-
-const SYS_BUILDINGS: SysBuildingData[] = [
-  {
-    id: 'building_a',
-    code: 'A',
-    name: 'Building A',
-    type: 'Operations Tower',
-    status: 'CRITICAL',
-    operator: 'Vaishnavi',
-    occupancy: 42,
-    hazard: 'High',
-    agentsOnline: 6,
-    agentsTotal: 6,
-    response: 'Evacuation in Progress',
-    lastEvent: 'Floor 4 fire — Exit A blocked by smoke',
-    connectivity: 'live',
-  },
-  {
-    id: 'building_b',
-    code: 'B',
-    name: 'Building B',
-    type: 'North Block',
-    status: 'WARNING',
-    operator: 'Arun',
-    occupancy: 31,
-    hazard: 'Low',
-    agentsOnline: 5,
-    agentsTotal: 6,
-    response: 'Monitoring',
-    lastEvent: 'Minor water leak on Floor 2 — resolved',
-    connectivity: 'live',
-  },
-  {
-    id: 'building_c',
-    code: 'C',
-    name: 'Building C',
-    type: 'South Block',
-    status: 'OPERATIONAL',
-    operator: 'Priya',
-    occupancy: 24,
-    hazard: 'None',
-    agentsOnline: 6,
-    agentsTotal: 6,
-    response: 'Normal',
-    lastEvent: 'Routine agent health check passed',
-    connectivity: 'live',
-  },
-];
-
-const SYS_AGENTS: SysAgentData[] = [
-  { id: 'a_fire', name: 'Fire & Hazard Agent', building: 'Building A', capability: 'Hazard detection', currentTask: 'Tracking smoke spread on Floor 4', status: 'online', confidence: 96, lastMessage: 'Confirmed Floor 4 smoke spread to stairwell B.', latencyMs: 120, icon: Flame },
-  { id: 'a_occ', name: 'Occupancy Agent', building: 'Building A', capability: 'Occupant tracking', currentTask: 'Tracking 42 occupants', status: 'online', confidence: 98, lastMessage: '42 occupants detected, 3 assistance requirements.', latencyMs: 95, icon: Users },
-  { id: 'a_sec', name: 'Security Agent', building: 'Building A', capability: 'Access & egress control', currentTask: 'Managing exit lockdown', status: 'online', confidence: 94, lastMessage: 'Exit A locked down, Exit B verified clear.', latencyMs: 140, icon: Shield },
-  { id: 'a_coord', name: 'Building Coordinator', building: 'Building A', capability: 'Local response planning', currentTask: 'Coordinating evacuation plan', status: 'online', confidence: 95, lastMessage: 'Recommending evacuation via Exit B.', latencyMs: 110, icon: Brain },
-  { id: 'a_eth', name: 'Ethical Priority Agent', building: 'Building A', capability: 'Vulnerable-occupant priority', currentTask: 'Flagging priority occupants', status: 'online', confidence: 90, lastMessage: 'Flagged 3 mobility-assistance occupants for priority egress.', latencyMs: 160, icon: HeartHandshake },
-  { id: 'a_cross', name: 'Cross-Building Liaison', building: 'Building A', capability: 'Inter-building messaging', currentTask: 'Requesting mutual aid', status: 'online', confidence: 88, lastMessage: 'Requested mutual aid from Building B.', latencyMs: 210, icon: Network },
-
-  { id: 'b_fire', name: 'Fire & Hazard Agent', building: 'Building B', capability: 'Hazard detection', currentTask: 'Idle — no hazards', status: 'online', confidence: 92, lastMessage: 'No hazards detected.', latencyMs: 105, icon: Flame },
-  { id: 'b_occ', name: 'Occupancy Agent', building: 'Building B', capability: 'Occupant tracking', currentTask: 'Tracking 31 occupants', status: 'online', confidence: 95, lastMessage: '31 occupants, no assistance requirements.', latencyMs: 90, icon: Users },
-  { id: 'b_sec', name: 'Security Agent', building: 'Building B', capability: 'Access & egress control', currentTask: 'Monitoring corridor to Building A', status: 'online', confidence: 91, lastMessage: 'Adjacent corridor to Building A confirmed clear.', latencyMs: 130, icon: Shield },
-  { id: 'b_coord', name: 'Building Coordinator', building: 'Building B', capability: 'Local response planning', currentTask: 'On standby for mutual aid overflow', status: 'online', confidence: 93, lastMessage: 'On standby to receive mutual aid overflow.', latencyMs: 100, icon: Brain },
-  { id: 'b_eth', name: 'Ethical Priority Agent', building: 'Building B', capability: 'Vulnerable-occupant priority', currentTask: 'Idle', status: 'online', confidence: 89, lastMessage: 'No priority flags active.', latencyMs: 150, icon: HeartHandshake },
-  { id: 'b_cross', name: 'Cross-Building Liaison', building: 'Building B', capability: 'Inter-building messaging', currentTask: 'Reconnecting session', status: 'degraded', confidence: 74, lastMessage: 'Message ack delayed by ~2.4s.', latencyMs: 480, icon: Network },
-
-  { id: 'c_fire', name: 'Fire & Hazard Agent', building: 'Building C', capability: 'Hazard detection', currentTask: 'Idle — no hazards', status: 'online', confidence: 90, lastMessage: 'No hazards detected.', latencyMs: 115, icon: Flame },
-  { id: 'c_occ', name: 'Occupancy Agent', building: 'Building C', capability: 'Occupant tracking', currentTask: 'Tracking 24 occupants', status: 'online', confidence: 93, lastMessage: '24 occupants, no assistance requirements.', latencyMs: 100, icon: Users },
-  { id: 'c_sec', name: 'Security Agent', building: 'Building C', capability: 'Access & egress control', currentTask: 'Idle — monitoring access points', status: 'online', confidence: 92, lastMessage: 'All access points nominal.', latencyMs: 118, icon: Shield },
-  { id: 'c_coord', name: 'Building Coordinator', building: 'Building C', capability: 'Local response planning', currentTask: 'Idle — no action required', status: 'online', confidence: 92, lastMessage: 'No action required.', latencyMs: 108, icon: Brain },
-  { id: 'c_eth', name: 'Ethical Priority Agent', building: 'Building C', capability: 'Vulnerable-occupant priority', currentTask: 'Idle', status: 'online', confidence: 91, lastMessage: 'No priority flags active.', latencyMs: 140, icon: HeartHandshake },
-  { id: 'c_cross', name: 'Cross-Building Liaison', building: 'Building C', capability: 'Inter-building messaging', currentTask: 'Listening for broadcasts', status: 'offline', confidence: null, lastMessage: 'Connection lost — attempting reconnect.', latencyMs: null, icon: Network },
-
-  { id: 'net_coord', name: 'Network Coordinator', building: 'System', capability: 'Campus-wide arbitration', currentTask: 'Arbitrating mutual aid request', status: 'online', confidence: 97, lastMessage: 'Mutual aid recommended: Building B → Building A.', latencyMs: 60, icon: Brain },
-  { id: 'net_registry', name: 'Network Registry', building: 'System', capability: 'Agent discovery & capability index', currentTask: 'Indexing agent capabilities', status: 'online', confidence: 99, lastMessage: '18 agents indexed across 3 buildings.', latencyMs: 40, icon: Server },
+  { id: 'p_vaishnavi', name: 'Vaishnavi', role: 'Building Operator', department: 'Building Operations', building: 'Building A', status: 'online', currentActivity: 'Monitoring Floor 4', lastAction: 'Approved evacuation route', lastActive: '2 min ago', accessLevel: 'Building-level', avatar: 'V' },
+  { id: 'p_arun', name: 'Arun', role: 'Building Operator', department: 'Building Operations', building: 'Building B', status: 'online', currentActivity: 'Monitoring building state', lastAction: 'Reviewed security alert', lastActive: '5 min ago', accessLevel: 'Building-level', avatar: 'A' },
+  { id: 'p_priya', name: 'Priya', role: 'Building Operator', department: 'Building Operations', building: 'Building C', status: 'offline', currentActivity: '—', lastAction: 'Logged out', lastActive: '1 hr ago', accessLevel: 'Building-level', avatar: 'P' },
+  { id: 'p_sysadmin', name: 'System Administrator', role: 'System Administrator', department: 'System Administration', building: 'Entire LATTICE System', status: 'online', currentActivity: 'System monitoring', lastAction: 'Reviewed pending decision (Mutual aid — Building A)', lastActive: 'Just now', accessLevel: 'System-wide', avatar: '🌐' },
 ];
 
 const ACTIVITY_FEED: ActivityEvent[] = [
@@ -328,102 +175,16 @@ const ACTIVITY_FEED: ActivityEvent[] = [
 ];
 
 const EMERGENCY_INCIDENTS: EmergencyIncident[] = [
-  {
-    id: 'inc1',
-    building: 'Building A',
-    zone: 'Floor 4',
-    type: 'Fire',
-    severity: 'CRITICAL',
-    occupancy: 42,
-    operator: 'Vaishnavi',
-    activeAgents: 6,
-    response: 'Evacuation in Progress',
-    aiDecision: 'Approved',
-    mutualAid: 'Requested — Building B',
-    status: 'ACTIVE',
-    time: '22:41:04',
-  },
-  {
-    id: 'inc2',
-    building: 'Building B',
-    zone: 'Floor 2',
-    type: 'Water Leak',
-    severity: 'LOW',
-    occupancy: 31,
-    operator: 'Arun',
-    activeAgents: 2,
-    response: 'Resolved',
-    aiDecision: 'Approved',
-    mutualAid: 'Not required',
-    status: 'RESOLVED',
-    time: '10:31:08',
-  },
-  {
-    id: 'inc3',
-    building: 'Building C',
-    zone: '—',
-    type: 'No active incident',
-    severity: 'LOW',
-    occupancy: 24,
-    operator: 'Priya',
-    activeAgents: 0,
-    response: 'Normal operations',
-    aiDecision: '—',
-    mutualAid: '—',
-    status: 'NORMAL',
-    time: '—',
-  },
+  { id: 'inc1', building: 'Building A', zone: 'Floor 4', type: 'Fire', severity: 'CRITICAL', occupancy: 42, operator: 'Vaishnavi', activeAgents: 6, response: 'Evacuation in Progress', aiDecision: 'Approved', mutualAid: 'Requested — Building B', status: 'ACTIVE', time: '22:41:04' },
+  { id: 'inc2', building: 'Building B', zone: 'Floor 2', type: 'Water Leak', severity: 'LOW', occupancy: 31, operator: 'Arun', activeAgents: 2, response: 'Resolved', aiDecision: 'Approved', mutualAid: 'Not required', status: 'RESOLVED', time: '10:31:08' },
+  { id: 'inc3', building: 'Building C', zone: '—', type: 'No active incident', severity: 'LOW', occupancy: 24, operator: 'Priya', activeAgents: 0, response: 'Normal operations', aiDecision: '—', mutualAid: '—', status: 'NORMAL', time: '—' },
 ];
 
 const SYS_DECISIONS: SysDecision[] = [
-  {
-    id: 'd1',
-    title: 'Mutual aid request from Building A',
-    recommendation: 'Approve mutual aid corridor from Building B to receive Building A overflow.',
-    confidence: 94,
-    riskLevel: 'High',
-    responsibleOperator: 'Vaishnavi (Building A)',
-    building: 'Building A / Building B',
-    operatorAction: 'PENDING',
-    finalDecision: 'Awaiting review',
-    timestamp: '22:41:20',
-  },
-  {
-    id: 'd2',
-    title: 'Avoid Exit A — reroute evacuation',
-    recommendation: 'Route Building A occupants to Exit B; Exit A compromised by smoke.',
-    confidence: 91,
-    riskLevel: 'Critical',
-    responsibleOperator: 'Vaishnavi (Building A)',
-    building: 'Building A',
-    operatorAction: 'MODIFIED',
-    finalDecision: 'Use Exit B, with staged release for Floor 3',
-    timestamp: '22:41:11',
-  },
-  {
-    id: 'd3',
-    title: 'Escalate Floor 2 leak to maintenance emergency',
-    recommendation: 'Classify Floor 2 water leak as an emergency requiring building-wide notice.',
-    confidence: 68,
-    riskLevel: 'Low',
-    responsibleOperator: 'Arun (Building B)',
-    building: 'Building B',
-    operatorAction: 'REJECTED',
-    finalDecision: 'Handled as routine maintenance ticket',
-    timestamp: '10:31:40',
-  },
-  {
-    id: 'd4',
-    title: 'Campus-wide precautionary advisory',
-    recommendation: 'Broadcast advisory to Buildings B and C about the Building A incident.',
-    confidence: 82,
-    riskLevel: 'Medium',
-    responsibleOperator: 'System Administrator',
-    building: 'Building A / B / C',
-    operatorAction: 'APPROVED',
-    finalDecision: 'Advisory broadcast to all buildings',
-    timestamp: '22:41:45',
-  },
+  { id: 'd1', title: 'Mutual aid request from Building A', recommendation: 'Approve mutual aid corridor from Building B to receive Building A overflow.', confidence: 94, riskLevel: 'High', responsibleOperator: 'Vaishnavi (Building A)', building: 'Building A / Building B', operatorAction: 'PENDING', finalDecision: 'Awaiting review', timestamp: '22:41:20' },
+  { id: 'd2', title: 'Avoid Exit A — reroute evacuation', recommendation: 'Route Building A occupants to Exit B; Exit A compromised by smoke.', confidence: 91, riskLevel: 'Critical', responsibleOperator: 'Vaishnavi (Building A)', building: 'Building A', operatorAction: 'MODIFIED', finalDecision: 'Use Exit B, with staged release for Floor 3', timestamp: '22:41:11' },
+  { id: 'd3', title: 'Escalate Floor 2 leak to maintenance emergency', recommendation: 'Classify Floor 2 water leak as an emergency requiring building-wide notice.', confidence: 68, riskLevel: 'Low', responsibleOperator: 'Arun (Building B)', building: 'Building B', operatorAction: 'REJECTED', finalDecision: 'Handled as routine maintenance ticket', timestamp: '10:31:40' },
+  { id: 'd4', title: 'Campus-wide precautionary advisory', recommendation: 'Broadcast advisory to Buildings B and C about the Building A incident.', confidence: 82, riskLevel: 'Medium', responsibleOperator: 'System Administrator', building: 'Building A / B / C', operatorAction: 'APPROVED', finalDecision: 'Advisory broadcast to all buildings', timestamp: '22:41:45' },
 ];
 
 const SYS_AUDIT_EVENTS: AuditEvent[] = [
@@ -443,31 +204,20 @@ const SYS_AUDIT_EVENTS: AuditEvent[] = [
   { id: 'e14', time: '09:30:11', title: 'Scheduled agent health check completed', detail: '17 / 18 agents passed, 1 flagged.', building: 'System', category: 'agent', actor: 'System' },
 ];
 
-const SYSTEM_HEALTH: SystemHealthItem[] = [
-  { id: 'h1', label: 'Authentication', status: 'healthy', detail: '4 / 4 accounts active, no failed logins', icon: Lock },
-  { id: 'h2', label: 'Buildings', status: 'healthy', detail: '3 / 3 buildings connected', icon: BuildingIcon },
-  { id: 'h3', label: 'Agents', status: 'degraded', detail: '17 / 18 online, 1 degraded/offline', icon: Bot },
-  { id: 'h4', label: 'Interoperability Layer', status: 'healthy', detail: 'Message routing nominal, 96ms avg latency', icon: Network },
-  { id: 'h5', label: 'Firebase', status: 'healthy', detail: 'Connected, realtime sync active', icon: Database },
-  { id: 'h6', label: 'AI Services', status: 'healthy', detail: 'All model endpoints responding', icon: Brain },
-  { id: 'h7', label: 'Simulation Engine', status: 'healthy', detail: 'Running — Building A emergency scenario', icon: Radio },
-];
-
 /* ============================================================================
    STYLE HELPERS
    ========================================================================== */
 
-const STATUS_STYLES: Record<BuildingStatus, { text: string; bg: string; border: string; label: string }> = {
+const STATUS_STYLES: Record<BuildingRecord['status'], { text: string; bg: string; border: string; label: string }> = {
   CRITICAL: { text: 'text-[#E26161]', bg: 'bg-[#E26161]/10', border: 'border-[#E26161]/30', label: '🔴 CRITICAL' },
   WARNING: { text: 'text-[#E6B85C]', bg: 'bg-[#E6B85C]/10', border: 'border-[#E6B85C]/30', label: '⚠ WARNING' },
   OPERATIONAL: { text: 'text-[#7AE04C]', bg: 'bg-[#7AE04C]/10', border: 'border-[#7AE04C]/30', label: '● OPERATIONAL' },
 };
 
-const AGENT_STATUS_STYLES: Record<AgentStatus, { text: string; label: string; icon: any }> = {
-  online: { text: 'text-[#7AE04C]', label: 'Active', icon: Wifi },
-  degraded: { text: 'text-[#E6B85C]', label: 'Degraded', icon: AlertTriangle },
-  offline: { text: 'text-[#E26161]', label: 'Offline', icon: WifiOff },
-  unknown: { text: 'text-[#565E75]', label: 'Unknown', icon: HelpCircle },
+const AGENT_STATUS_STYLES: Record<AgentRecord['status'], { text: string; label: string; icon: any }> = {
+  Active: { text: 'text-[#7AE04C]', label: 'Active', icon: Wifi },
+  Maintenance: { text: 'text-[#E6B85C]', label: 'Maintenance', icon: AlertTriangle },
+  Inactive: { text: 'text-[#E26161]', label: 'Inactive', icon: WifiOff },
 };
 
 const CATEGORY_STYLES: Record<AuditCategory, { text: string; bg: string; label: string }> = {
@@ -502,12 +252,6 @@ const DECISION_STATUS_STYLES: Record<DecisionStatus, string> = {
   MODIFIED: 'bg-[#6B9FD4]/15 border-[#6B9FD4]/50 text-[#292733]',
 };
 
-const HEALTH_STYLES: Record<SystemHealthItem['status'], { text: string; dot: string; label: string }> = {
-  healthy: { text: 'text-[#7AE04C]', dot: 'bg-[#7AE04C]', label: 'HEALTHY' },
-  degraded: { text: 'text-[#E6B85C]', dot: 'bg-[#E6B85C]', label: 'DEGRADED' },
-  down: { text: 'text-[#E26161]', dot: 'bg-[#E26161]', label: 'DOWN' },
-};
-
 const SEVERITY_STYLES: Record<EmergencyIncident['severity'], string> = {
   CRITICAL: 'text-[#E26161] bg-[#E26161]/10 border-[#E26161]/30',
   HIGH: 'text-[#E26161] bg-[#E26161]/10 border-[#E26161]/30',
@@ -520,6 +264,18 @@ const INCIDENT_STATUS_STYLES: Record<IncidentStatus, string> = {
   RESOLVED: 'text-[#6B9FD4] bg-[#6B9FD4]/10 border-[#6B9FD4]/30',
   NORMAL: 'text-[#7AE04C] bg-[#7AE04C]/10 border-[#7AE04C]/30',
 };
+
+/** Picks a representative icon for an agent based on its name — purely cosmetic. */
+function getAgentIcon(name: string) {
+  const n = name.toLowerCase();
+  if (n.includes('fire') || n.includes('hazard')) return Flame;
+  if (n.includes('occupan')) return Users;
+  if (n.includes('security')) return Shield;
+  if (n.includes('ethic')) return HeartHandshake;
+  if (n.includes('cross') || n.includes('liaison') || n.includes('network')) return Network;
+  if (n.includes('coordinat') || n.includes('registry')) return Brain;
+  return Bot;
+}
 
 /* ============================================================================
    SMALL PRESENTATIONAL COMPONENTS
@@ -545,10 +301,18 @@ const SectionHeader: React.FC<{ title: string; subtitle: string; right?: React.R
   </div>
 );
 
+const AddButton: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
+  <button
+    onClick={onClick}
+    className="py-2 px-4 bg-[#292733] hover:bg-[#423F4F] text-white text-xs font-mono-tech font-extrabold uppercase tracking-wider rounded-[6px] transition-colors cursor-pointer flex items-center gap-2"
+  >
+    <Plus className="w-3.5 h-3.5" />
+    {label}
+  </button>
+);
+
 /* ============================================================================
    LIVE FEED STATUS WIDGET
-   (Pulsing "live" indicator + the most recent event's id and timestamp —
-   derived straight from ACTIVITY_FEED, no separate mock source.)
    ========================================================================== */
 
 const LiveFeedStatus: React.FC<{ latestEvent: ActivityEvent }> = ({ latestEvent }) => {
@@ -570,23 +334,17 @@ const LiveFeedStatus: React.FC<{ latestEvent: ActivityEvent }> = ({ latestEvent 
         </span>
         <span className="text-[11px] font-extrabold text-[#7AE04C] tracking-widest uppercase">Live</span>
       </div>
-
       <div className="w-px h-8 bg-[#565E75]/30"></div>
-
       <div>
         <span className="text-[9px] text-[#A99BC9] uppercase font-bold block tracking-wide">Last Event ID</span>
         <span className="text-xs font-extrabold text-[#F3F3F3]">#{latestEvent.id}</span>
       </div>
-
       <div className="w-px h-8 bg-[#565E75]/30"></div>
-
       <div>
         <span className="text-[9px] text-[#A99BC9] uppercase font-bold block tracking-wide">Event Time</span>
         <span className="text-xs font-extrabold text-[#F3F3F3]">{latestEvent.time}</span>
       </div>
-
       <div className="w-px h-8 bg-[#565E75]/30"></div>
-
       <div>
         <span className="text-[9px] text-[#A99BC9] uppercase font-bold block tracking-wide">System Clock</span>
         <span className="text-xs font-extrabold text-[#F3F3F3] tabular-nums">{clockStr}</span>
@@ -606,17 +364,26 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
   const [visibleActivityCount, setVisibleActivityCount] = useState(6);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(EMERGENCY_INCIDENTS[0]?.id ?? null);
 
-  // Reveal the live activity feed progressively.
+  // Buildings + Agents now come from the centralized stores, not local arrays.
+  const buildings = useBuildings();
+  const agents = useAgentRegistry();
+
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
+  const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
+  const [showAddAgentModal, setShowAddAgentModal] = useState(false);
+
+  const operatorOptions = PEOPLE.filter((p) => p.role === 'Building Operator').map((p) => p.name);
+
   useEffect(() => {
     if (visibleActivityCount >= ACTIVITY_FEED.length) return;
     const t = setTimeout(() => setVisibleActivityCount((c) => c + 1), 2200);
     return () => clearTimeout(t);
   }, [visibleActivityCount]);
 
-  const onlineAgents = SYS_AGENTS.filter((a) => a.status === 'online').length;
-  const totalAgents = SYS_AGENTS.length;
+  const onlineAgents = agents.filter((a) => a.status === 'Active').length;
+  const totalAgents = agents.length;
   const onlinePeople = PEOPLE.filter((p) => p.status === 'online').length;
-  const criticalBuildings = SYS_BUILDINGS.filter((b) => b.status === 'CRITICAL').length;
+  const criticalBuildings = buildings.filter((b) => b.status === 'CRITICAL').length;
   const pendingCount = SYS_DECISIONS.filter((d) => d.operatorAction === 'PENDING').length;
   const activeIncidents = EMERGENCY_INCIDENTS.filter((i) => i.status === 'ACTIVE').length;
 
@@ -637,6 +404,11 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
   });
 
   const selectedIncident = EMERGENCY_INCIDENTS.find((i) => i.id === selectedIncidentId) ?? null;
+  const selectedBuilding = buildings.find((b) => b.id === selectedBuildingId) ?? null;
+  const agentsForSelectedBuilding = selectedBuilding ? agents.filter((a) => a.assignedBuildingId === selectedBuilding.id) : [];
+  const operatorsForSelectedBuilding = selectedBuilding ? PEOPLE.filter((p) => p.building === selectedBuilding.name) : [];
+
+  const buildingGroups = Array.from(new Set(agents.map((a) => a.assignedBuildingName)));
 
   const navButtonClass = (tab: AdminTab) =>
     `w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[6px] font-bold transition-all text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#A99BC9] ${
@@ -660,7 +432,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                 <span className="font-mono-tech text-[9px] text-[#A99BC9] tracking-widest uppercase">SYSTEM ADMINISTRATION</span>
               </div>
             </div>
-
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="md:hidden p-2 text-[#A99BC9] hover:text-[#F3F3F3] hover:bg-[#423F4F] rounded transition-colors cursor-pointer"
@@ -686,7 +457,7 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
               </button>
               <button onClick={() => { setActiveTab('agents'); setIsMobileMenuOpen(false); }} className={navButtonClass('agents')}>
                 <Bot className="w-4 h-4 text-[#6B9FD4]" />
-                <span>Agent Network</span>
+                <span>Agent Registry</span>
               </button>
               <button onClick={() => { setActiveTab('activity'); setIsMobileMenuOpen(false); }} className={navButtonClass('activity')}>
                 <Activity className="w-4 h-4 text-[#A99BC9]" />
@@ -716,11 +487,10 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
               </button>
             </nav>
 
-            {/* SYSTEM SCOPE SUMMARY */}
             <div className="p-4 border-t border-[#565E75]/30 space-y-2 font-mono-tech text-xs">
               <span className="text-[10px] text-[#A99BC9] font-bold uppercase block">SYSTEM SCOPE</span>
               <div className="space-y-1.5">
-                {SYS_BUILDINGS.map((b) => (
+                {buildings.map((b) => (
                   <div key={b.id} className="p-2 bg-[#423F4F]/60 rounded border border-[#565E75]/40 flex items-center justify-between">
                     <span className="font-bold text-[#F3F3F3] text-[11px]">🏢 {b.name}</span>
                     <span
@@ -735,7 +505,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
               </div>
             </div>
 
-            {/* PROFILE + FOOTER ACTIONS */}
             <div className="p-4 border-t border-[#565E75]/30 space-y-3 font-mono-tech">
               <div className="p-3 bg-[#423F4F]/50 rounded-[6px] border border-[#565E75]/30 space-y-2">
                 <div className="flex items-center gap-2.5">
@@ -844,14 +613,13 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <SummaryCard label="ACTIVE USERS" value={`${onlinePeople} Online`} sub={`${PEOPLE.length} TOTAL`} accent="#7AE04C" />
-                <SummaryCard label="BUILDINGS" value={`${SYS_BUILDINGS.length} Connected`} sub="ALL ONLINE" accent="#6B9FD4" />
+                <SummaryCard label="BUILDINGS" value={`${buildings.length} Connected`} sub="ALL ONLINE" accent="#6B9FD4" />
                 <SummaryCard label="ACTIVE INCIDENTS" value={String(activeIncidents)} sub="CRITICAL" accent="#E26161" />
                 <SummaryCard label="AGENTS" value={`${onlineAgents} / ${totalAgents}`} sub="SYSTEM-WIDE" accent="#6B9FD4" />
                 <SummaryCard label="PENDING DECISIONS" value={String(pendingCount)} sub="AWAITING REVIEW" accent="#E6B85C" />
                 <SummaryCard label="SYSTEM HEALTH" value="96%" sub="NOMINAL" accent="#7AE04C" />
               </div>
 
-              {/* CURRENTLY ACTIVE OPERATORS */}
               <div className="bg-white border border-[#423F4F]/10 rounded-[8px] p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between border-b border-[#423F4F]/10 pb-3">
                   <h2 className="text-lg font-extrabold text-[#292733]">CURRENTLY ACTIVE OPERATORS</h2>
@@ -867,7 +635,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                 </div>
               </div>
 
-              {/* BUILDING STATUS */}
               <div className="bg-white border border-[#423F4F]/10 rounded-[8px] p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between border-b border-[#423F4F]/10 pb-3">
                   <h2 className="text-lg font-extrabold text-[#292733]">BUILDING STATUS</h2>
@@ -877,13 +644,13 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                   </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {SYS_BUILDINGS.map((b) => (
+                  {buildings.map((b) => (
                     <BuildingCard key={b.id} building={b} />
                   ))}
                 </div>
               </div>
 
-              <RoleHierarchy />
+              <RoleHierarchy buildings={buildings} />
             </div>
           )}
 
@@ -891,7 +658,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
           {activeTab === 'people' && (
             <div className="space-y-6">
               <SectionHeader title="PEOPLE & ROLE MANAGEMENT" subtitle="Every registered user, their role, assignment, and current activity." />
-
               <div className="bg-white border border-[#423F4F]/10 rounded-[8px] shadow-sm overflow-hidden">
                 <div className="hidden lg:grid grid-cols-8 gap-3 px-5 py-3 bg-[#F3F3F3]/70 border-b border-[#423F4F]/10 font-mono-tech text-[10px] text-[#565E75] uppercase font-bold">
                   <span className="col-span-2">Person</span>
@@ -925,56 +691,116 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                   ))}
                 </div>
               </div>
-
-              <RoleHierarchy />
+              <RoleHierarchy buildings={buildings} />
             </div>
           )}
 
           {/* ---------- BUILDINGS ---------- */}
           {activeTab === 'buildings' && (
             <div className="space-y-6">
-              <SectionHeader title="BUILDING OVERVIEW" subtitle="Every registered building, its assigned operator, and current state." />
+              <SectionHeader
+                title="BUILDING MANAGEMENT"
+                subtitle="Every registered building, its assigned operator, and current state."
+                right={<AddButton label="Add Building" onClick={() => setShowAddBuildingModal(true)} />}
+              />
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {SYS_BUILDINGS.map((b) => (
-                  <BuildingCard key={b.id} building={b} detailed />
+                {buildings.map((b) => (
+                  <button key={b.id} onClick={() => setSelectedBuildingId(b.id)} className="text-left cursor-pointer">
+                    <BuildingCard building={b} detailed selected={selectedBuildingId === b.id} />
+                  </button>
                 ))}
               </div>
+
+              {selectedBuilding && (
+                <div className="bg-white border border-[#423F4F]/10 rounded-[8px] p-6 shadow-sm space-y-6">
+                  <div className="flex items-center justify-between border-b border-[#423F4F]/10 pb-3">
+                    <div>
+                      <span className="font-mono-tech text-[10px] text-[#A99BC9] uppercase font-bold block">BUILDING DETAIL</span>
+                      <h3 className="text-base font-extrabold text-[#292733]">{selectedBuilding.name}</h3>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-[6px] text-[10px] font-bold border font-mono-tech ${STATUS_STYLES[selectedBuilding.status].border} ${STATUS_STYLES[selectedBuilding.status].bg} ${STATUS_STYLES[selectedBuilding.status].text}`}>
+                      {STATUS_STYLES[selectedBuilding.status].label}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-mono-tech text-xs">
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Address</span><span className="font-bold text-[#292733]">{selectedBuilding.address || '—'}, {selectedBuilding.city}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Floors</span><span className="font-bold text-[#292733]">{selectedBuilding.floors}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Capacity</span><span className="font-bold text-[#292733]">{selectedBuilding.occupancyCapacity}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Assigned Operator</span><span className="font-bold text-[#292733]">{selectedBuilding.operator || '—'}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Current Occupancy</span><span className="font-bold text-[#292733]">{selectedBuilding.occupancy}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Hazard</span><span className="font-bold text-[#292733]">{selectedBuilding.hazard}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Response State</span><span className="font-bold text-[#292733]">{selectedBuilding.response}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Monitoring</span><span className="font-bold text-[#292733]">{selectedBuilding.monitoringEnabled ? 'Enabled' : 'Disabled'}</span></div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <h4 className="font-mono-tech text-[10px] font-bold text-[#A99BC9] uppercase tracking-wider border-b border-[#423F4F]/10 pb-2">Agents ({agentsForSelectedBuilding.length})</h4>
+                      {agentsForSelectedBuilding.length === 0 ? (
+                        <p className="text-xs text-[#565E75] font-mono-tech">No agents registered to this building yet.</p>
+                      ) : (
+                        agentsForSelectedBuilding.map((a) => (
+                          <div key={a.id} className="flex items-center justify-between p-2.5 bg-[#F3F3F3] rounded border border-[#423F4F]/10 font-mono-tech text-xs">
+                            <span className="font-bold text-[#292733]">{a.name}</span>
+                            <span className={`text-[10px] font-bold ${AGENT_STATUS_STYLES[a.status].text}`}>{a.status}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="font-mono-tech text-[10px] font-bold text-[#A99BC9] uppercase tracking-wider border-b border-[#423F4F]/10 pb-2">Operators ({operatorsForSelectedBuilding.length})</h4>
+                      {operatorsForSelectedBuilding.length === 0 ? (
+                        <p className="text-xs text-[#565E75] font-mono-tech">No operators assigned to this building yet.</p>
+                      ) : (
+                        operatorsForSelectedBuilding.map((p) => (
+                          <div key={p.id} className="flex items-center justify-between p-2.5 bg-[#F3F3F3] rounded border border-[#423F4F]/10 font-mono-tech text-xs">
+                            <span className="font-bold text-[#292733]">{p.name}</span>
+                            <span className={`text-[10px] font-bold ${p.status === 'online' ? 'text-[#7AE04C]' : 'text-[#565E75]'}`}>{p.status === 'online' ? 'Online' : 'Offline'}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ---------- AGENT NETWORK ---------- */}
+          {/* ---------- AGENT REGISTRY ---------- */}
           {activeTab === 'agents' && (
             <div className="space-y-6">
-              <SectionHeader title="AGENT SYSTEM STATUS" subtitle="Health, confidence, current task, and message activity for every agent in the system." />
+              <SectionHeader
+                title="AGENT REGISTRY"
+                subtitle="Administrative view of every registered agent, its assignment, capabilities, and status."
+                right={<AddButton label="Register Agent" onClick={() => setShowAddAgentModal(true)} />}
+              />
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono-tech text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 font-mono-tech text-xs">
                 <div className="bg-white p-4 rounded-[8px] border border-[#423F4F]/10 shadow-sm">
-                  <span className="text-[10px] text-[#565E75] uppercase font-bold block">ONLINE</span>
-                  <span className="text-xl font-extrabold text-[#7AE04C]">{SYS_AGENTS.filter((a) => a.status === 'online').length}</span>
+                  <span className="text-[10px] text-[#565E75] uppercase font-bold block">ACTIVE</span>
+                  <span className="text-xl font-extrabold text-[#7AE04C]">{agents.filter((a) => a.status === 'Active').length}</span>
                 </div>
                 <div className="bg-white p-4 rounded-[8px] border border-[#423F4F]/10 shadow-sm">
-                  <span className="text-[10px] text-[#565E75] uppercase font-bold block">DEGRADED</span>
-                  <span className="text-xl font-extrabold text-[#E6B85C]">{SYS_AGENTS.filter((a) => a.status === 'degraded').length}</span>
+                  <span className="text-[10px] text-[#565E75] uppercase font-bold block">MAINTENANCE</span>
+                  <span className="text-xl font-extrabold text-[#E6B85C]">{agents.filter((a) => a.status === 'Maintenance').length}</span>
                 </div>
                 <div className="bg-white p-4 rounded-[8px] border border-[#423F4F]/10 shadow-sm">
-                  <span className="text-[10px] text-[#565E75] uppercase font-bold block">OFFLINE</span>
-                  <span className="text-xl font-extrabold text-[#E26161]">{SYS_AGENTS.filter((a) => a.status === 'offline').length}</span>
-                </div>
-                <div className="bg-white p-4 rounded-[8px] border border-[#423F4F]/10 shadow-sm">
-                  <span className="text-[10px] text-[#565E75] uppercase font-bold block">UNKNOWN</span>
-                  <span className="text-xl font-extrabold text-[#565E75]">{SYS_AGENTS.filter((a) => a.status === 'unknown').length}</span>
+                  <span className="text-[10px] text-[#565E75] uppercase font-bold block">INACTIVE</span>
+                  <span className="text-xl font-extrabold text-[#E26161]">{agents.filter((a) => a.status === 'Inactive').length}</span>
                 </div>
               </div>
 
-              {(['Building A', 'Building B', 'Building C', 'System'] as const).map((bldg) => {
-                const group = SYS_AGENTS.filter((a) => a.building === bldg);
+              {buildingGroups.map((bldg) => {
+                const group = agents.filter((a) => a.assignedBuildingName === bldg);
                 if (group.length === 0) return null;
                 return (
                   <div key={bldg} className="space-y-3">
                     <h3 className="font-mono-tech text-xs font-bold text-[#565E75] uppercase tracking-wider px-1">{bldg}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {group.map((agent) => {
-                        const Icon = agent.icon;
+                        const Icon = getAgentIcon(agent.name);
                         const s = AGENT_STATUS_STYLES[agent.status];
                         const StatusIcon = s.icon;
                         return (
@@ -986,7 +812,7 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                                 </div>
                                 <div>
                                   <p className="text-sm font-extrabold text-[#292733] leading-tight">{agent.name}</p>
-                                  <p className="text-[10px] text-[#565E75] font-mono-tech font-bold uppercase">{agent.capability}</p>
+                                  <p className="text-[10px] text-[#565E75] font-mono-tech font-bold uppercase">{agent.type || 'Agent'}</p>
                                 </div>
                               </div>
                               <span className={`flex items-center gap-1 text-[10px] font-bold font-mono-tech ${s.text}`}>
@@ -996,16 +822,23 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                             </div>
 
                             <p className="text-[11px] text-[#292733] font-mono-tech font-bold border-t border-[#423F4F]/10 pt-2.5">
-                              Task: <span className="font-normal text-[#565E75]">{agent.currentTask}</span>
+                              ID: <span className="font-normal text-[#565E75]">{agent.agentId}</span>
                             </p>
-                            <p className="text-[11px] text-[#565E75] font-mono-tech leading-relaxed">{agent.lastMessage}</p>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {agent.capabilities.map((cap) => (
+                                <span key={cap} className="text-[9px] font-mono-tech font-bold px-1.5 py-0.5 rounded bg-[#6B9FD4]/10 text-[#6B9FD4]">
+                                  {cap}
+                                </span>
+                              ))}
+                            </div>
 
                             <div className="flex items-center justify-between font-mono-tech text-[10px] pt-1">
                               <span className="text-[#565E75]">
                                 Confidence: <span className="font-bold text-[#292733]">{agent.confidence !== null ? `${agent.confidence}%` : '—'}</span>
                               </span>
                               <span className="text-[#565E75]">
-                                Latency: <span className="font-bold text-[#292733]">{agent.latencyMs !== null ? `${agent.latencyMs}ms` : '—'}</span>
+                                Last Comm: <span className="font-bold text-[#292733]">{agent.lastCommunication}</span>
                               </span>
                             </div>
                           </div>
@@ -1067,7 +900,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
           {activeTab === 'emergency' && (
             <div className="space-y-6">
               <SectionHeader title="EMERGENCY MONITORING" subtitle="All active, resolved, and normal-state buildings across the system." />
-
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {EMERGENCY_INCIDENTS.map((inc) => (
                   <button
@@ -1103,34 +935,13 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                     </span>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-mono-tech text-xs">
-                    <div>
-                      <span className="text-[10px] text-[#565E75] uppercase font-bold block">Occupancy</span>
-                      <span className="font-bold text-[#292733]">{selectedIncident.occupancy}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#565E75] uppercase font-bold block">Assigned Operator</span>
-                      <span className="font-bold text-[#292733]">{selectedIncident.operator}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#565E75] uppercase font-bold block">Active Agents</span>
-                      <span className="font-bold text-[#292733]">{selectedIncident.activeAgents}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#565E75] uppercase font-bold block">Response</span>
-                      <span className="font-bold text-[#292733]">{selectedIncident.response}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#565E75] uppercase font-bold block">AI Decision</span>
-                      <span className="font-bold text-[#292733]">{selectedIncident.aiDecision}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#565E75] uppercase font-bold block">Mutual Aid</span>
-                      <span className="font-bold text-[#292733]">{selectedIncident.mutualAid}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#565E75] uppercase font-bold block">Reported</span>
-                      <span className="font-bold text-[#292733]">{selectedIncident.time}</span>
-                    </div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Occupancy</span><span className="font-bold text-[#292733]">{selectedIncident.occupancy}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Assigned Operator</span><span className="font-bold text-[#292733]">{selectedIncident.operator}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Active Agents</span><span className="font-bold text-[#292733]">{selectedIncident.activeAgents}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Response</span><span className="font-bold text-[#292733]">{selectedIncident.response}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">AI Decision</span><span className="font-bold text-[#292733]">{selectedIncident.aiDecision}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Mutual Aid</span><span className="font-bold text-[#292733]">{selectedIncident.mutualAid}</span></div>
+                    <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Reported</span><span className="font-bold text-[#292733]">{selectedIncident.time}</span></div>
                   </div>
                 </div>
               )}
@@ -1144,7 +955,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                 title="DECISION OVERSIGHT"
                 subtitle="Observe and audit AI recommendations and the operator responses to them. Building Operators retain operational authority."
               />
-
               <div className="space-y-4">
                 {SYS_DECISIONS.map((d) => (
                   <div key={d.id} className="bg-white border border-[#423F4F]/10 rounded-[8px] p-6 shadow-sm space-y-4">
@@ -1162,36 +972,20 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                         </span>
                       </div>
                     </div>
-
                     <div className="p-3.5 bg-[#F3F3F3] rounded-[6px] border border-[#423F4F]/10 space-y-1 font-mono-tech text-xs">
                       <span className="text-[10px] text-[#565E75] uppercase font-bold block">RECOMMENDATION</span>
                       <p className="text-[#292733] font-bold leading-relaxed">{d.recommendation}</p>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono-tech text-xs">
-                      <div>
-                        <span className="text-[10px] text-[#565E75] uppercase font-bold block">Confidence</span>
-                        <span className="font-bold text-[#292733]">{d.confidence}%</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-[#565E75] uppercase font-bold block">Building</span>
-                        <span className="font-bold text-[#292733]">{d.building}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-[#565E75] uppercase font-bold block">Responsible Operator</span>
-                        <span className="font-bold text-[#292733]">{d.responsibleOperator}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-[#565E75] uppercase font-bold block">Timestamp</span>
-                        <span className="font-bold text-[#292733]">{d.timestamp}</span>
-                      </div>
+                      <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Confidence</span><span className="font-bold text-[#292733]">{d.confidence}%</span></div>
+                      <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Building</span><span className="font-bold text-[#292733]">{d.building}</span></div>
+                      <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Responsible Operator</span><span className="font-bold text-[#292733]">{d.responsibleOperator}</span></div>
+                      <div><span className="text-[10px] text-[#565E75] uppercase font-bold block">Timestamp</span><span className="font-bold text-[#292733]">{d.timestamp}</span></div>
                     </div>
-
                     <div className="p-3.5 bg-[#F3F3F3] rounded-[6px] border border-[#423F4F]/10 space-y-1 font-mono-tech text-xs">
                       <span className="text-[10px] text-[#565E75] uppercase font-bold block">FINAL DECISION</span>
                       <p className="text-[#565E75] leading-relaxed">{d.finalDecision}</p>
                     </div>
-
                     <div className="flex items-center gap-2 font-mono-tech text-[11px] text-[#A99BC9] pt-1">
                       <Eye className="w-3.5 h-3.5" />
                       <span>System Administrator view — observe only, no approval action taken here.</span>
@@ -1206,7 +1000,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
           {activeTab === 'audit' && (
             <div className="space-y-6">
               <SectionHeader title="AUDIT LOG" subtitle="System-wide chronological record of activity, decisions, overrides, failures, and authentication events." />
-
               <div className="flex flex-wrap gap-2 font-mono-tech text-[11px]">
                 {(['all', 'agent', 'emergency', 'decision', 'override', 'failure', 'auth', 'system', 'Building A', 'Building B', 'Building C'] as const).map((f) => (
                   <button
@@ -1222,7 +1015,6 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
                   </button>
                 ))}
               </div>
-
               <div className="bg-white border border-[#423F4F]/10 rounded-[8px] shadow-sm divide-y divide-[#423F4F]/10">
                 {filteredAudit.length === 0 ? (
                   <div className="p-6 text-center text-xs text-[#565E75] font-mono-tech">No events match this filter.</div>
@@ -1248,9 +1040,23 @@ export const AdministratorDashboard: React.FC<AdministratorDashboardProps> = ({ 
           )}
 
           {/* ---------- SETTINGS ---------- */}
-          {activeTab === 'settings' && <SystemAdministratorSettingsPanel />}
+          {activeTab === 'settings' && <SystemAdministratorSettingsPanel agents={agents} />}
         </main>
       </div>
+
+      {/* ==================== MODALS ==================== */}
+      <AddBuildingModal
+        open={showAddBuildingModal}
+        onClose={() => setShowAddBuildingModal(false)}
+        onCreated={(id) => setSelectedBuildingId(id)}
+        operatorOptions={operatorOptions}
+      />
+      <AddAgentModal
+        open={showAddAgentModal}
+        onClose={() => setShowAddAgentModal(false)}
+        onCreated={() => {}}
+        buildings={buildings}
+      />
     </div>
   );
 };
@@ -1277,14 +1083,8 @@ const PersonCard: React.FC<{ person: PersonData }> = ({ person: p }) => (
       </span>
     </div>
     <div className="grid grid-cols-2 gap-2 font-mono-tech text-[10px] border-t border-[#423F4F]/10 pt-2.5">
-      <div>
-        <span className="text-[#565E75] block uppercase">Department</span>
-        <span className="font-bold text-[#292733]">{p.department}</span>
-      </div>
-      <div>
-        <span className="text-[#565E75] block uppercase">Scope</span>
-        <span className="font-bold text-[#292733]">{p.building}</span>
-      </div>
+      <div><span className="text-[#565E75] block uppercase">Department</span><span className="font-bold text-[#292733]">{p.department}</span></div>
+      <div><span className="text-[#565E75] block uppercase">Scope</span><span className="font-bold text-[#292733]">{p.building}</span></div>
     </div>
     <div className="font-mono-tech text-[11px] space-y-1 border-t border-[#423F4F]/10 pt-2.5">
       <p className="text-[#292733]"><span className="text-[#565E75]">Current Activity:</span> {p.currentActivity}</p>
@@ -1298,10 +1098,10 @@ const PersonCard: React.FC<{ person: PersonData }> = ({ person: p }) => (
    BUILDING CARD
    ========================================================================== */
 
-const BuildingCard: React.FC<{ building: SysBuildingData; detailed?: boolean }> = ({ building: b, detailed }) => {
+const BuildingCard: React.FC<{ building: BuildingRecord; detailed?: boolean; selected?: boolean }> = ({ building: b, detailed, selected }) => {
   const s = STATUS_STYLES[b.status];
   return (
-    <div className={`p-5 rounded-[8px] border ${s.border} ${s.bg} space-y-3`}>
+    <div className={`p-5 rounded-[8px] border ${s.border} ${s.bg} space-y-3 ${selected ? 'ring-2 ring-[#A99BC9]' : ''}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BuildingIcon className="w-4 h-4 text-[#292733]" />
@@ -1310,30 +1110,13 @@ const BuildingCard: React.FC<{ building: SysBuildingData; detailed?: boolean }> 
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono-tech ${s.text}`}>{s.label}</span>
       </div>
       <p className="text-[10px] text-[#565E75] font-mono-tech font-bold uppercase">{b.type}</p>
-
       <div className="grid grid-cols-2 gap-2 font-mono-tech text-[10px]">
-        <div>
-          <span className="text-[#565E75] block uppercase">Operator</span>
-          <span className="font-bold text-[#292733]">{b.operator}</span>
-        </div>
-        <div>
-          <span className="text-[#565E75] block uppercase">Occupancy</span>
-          <span className="font-bold text-[#292733]">{b.occupancy}</span>
-        </div>
-        <div>
-          <span className="text-[#565E75] block uppercase">Hazard</span>
-          <span className="font-bold text-[#292733]">{b.hazard}</span>
-        </div>
-        <div>
-          <span className="text-[#565E75] block uppercase">Agents</span>
-          <span className="font-bold text-[#292733]">{b.agentsOnline} / {b.agentsTotal}</span>
-        </div>
-        <div className="col-span-2">
-          <span className="text-[#565E75] block uppercase">Response</span>
-          <span className="font-bold text-[#292733]">{b.response}</span>
-        </div>
+        <div><span className="text-[#565E75] block uppercase">Operator</span><span className="font-bold text-[#292733]">{b.operator || '—'}</span></div>
+        <div><span className="text-[#565E75] block uppercase">Occupancy</span><span className="font-bold text-[#292733]">{b.occupancy}</span></div>
+        <div><span className="text-[#565E75] block uppercase">Hazard</span><span className="font-bold text-[#292733]">{b.hazard}</span></div>
+        <div><span className="text-[#565E75] block uppercase">Agents</span><span className="font-bold text-[#292733]">{b.agentsOnline} / {b.agentsTotal}</span></div>
+        <div className="col-span-2"><span className="text-[#565E75] block uppercase">Response</span><span className="font-bold text-[#292733]">{b.response}</span></div>
       </div>
-
       {detailed && (
         <div className="pt-2 border-t border-[#423F4F]/10 space-y-1.5 font-mono-tech text-[10px]">
           <div className="flex items-center justify-between">
@@ -1354,7 +1137,7 @@ const BuildingCard: React.FC<{ building: SysBuildingData; detailed?: boolean }> 
    ROLE HIERARCHY
    ========================================================================== */
 
-const RoleHierarchy: React.FC = () => (
+const RoleHierarchy: React.FC<{ buildings: BuildingRecord[] }> = ({ buildings }) => (
   <div className="bg-white border border-[#423F4F]/10 rounded-[8px] p-6 shadow-sm">
     <div className="flex items-center justify-between border-b border-[#423F4F]/10 pb-3 mb-6">
       <h2 className="text-lg font-extrabold text-[#292733]">ROLE HIERARCHY</h2>
@@ -1369,13 +1152,13 @@ const RoleHierarchy: React.FC = () => (
         <div className="w-px h-6 bg-[#423F4F]/30"></div>
         <div className="w-full h-px bg-[#423F4F]/30"></div>
         <div className="flex w-full justify-between px-8">
-          {SYS_BUILDINGS.map((b) => (
+          {buildings.map((b) => (
             <div key={b.id} className="flex flex-col items-center gap-1.5 -mt-px">
               <div className="w-px h-6 bg-[#423F4F]/30"></div>
               <div className={`px-4 py-2 rounded-[6px] font-mono-tech text-[11px] font-extrabold border ${STATUS_STYLES[b.status].border} ${STATUS_STYLES[b.status].bg} ${STATUS_STYLES[b.status].text}`}>
                 {b.name.toUpperCase()} OPERATOR
               </div>
-              <span className="font-mono-tech text-[10px] font-bold text-[#565E75]">{b.operator}</span>
+              <span className="font-mono-tech text-[10px] font-bold text-[#565E75]">{b.operator || '—'}</span>
               <div className="w-px h-4 bg-[#423F4F]/30"></div>
               <div className="px-3 py-1.5 rounded-[6px] font-mono-tech text-[10px] font-bold border border-[#6B9FD4]/30 bg-[#6B9FD4]/10 text-[#6B9FD4]">
                 {b.agentsOnline} / {b.agentsTotal} AGENTS
@@ -1429,7 +1212,7 @@ const ToggleRow: React.FC<{ label: string; description: string; defaultOn?: bool
   );
 };
 
-const SystemAdministratorSettingsPanel: React.FC = () => (
+const SystemAdministratorSettingsPanel: React.FC<{ agents: AgentRecord[] }> = ({ agents }) => (
   <div className="space-y-6">
     <SectionHeader title="SYSTEM SETTINGS" subtitle="System-wide configuration for LATTICE. No credentials or environment variables are exposed here." />
 
@@ -1443,15 +1226,15 @@ const SystemAdministratorSettingsPanel: React.FC = () => (
     </SettingsSection>
 
     <SettingsSection title="Building Management" icon={BuildingIcon}>
-      <SettingsField label="Registered Buildings" value="Building A, Building B, Building C" />
+      <SettingsField label="Registered Buildings" value="Managed centrally — see the Buildings tab" />
       <SettingsField label="Building Metadata" value="Type, occupancy capacity, assigned operator, hazard profile" />
       <div className="pt-2 border-t border-[#423F4F]/10">
-        <ToggleRow label="Allow new building registration" description="Permit new buildings to join the LATTICE system after verification." defaultOn={false} />
+        <ToggleRow label="Allow new building registration" description="Permit new buildings to join the LATTICE system after verification." />
       </div>
     </SettingsSection>
 
     <SettingsSection title="Agent Management" icon={Server}>
-      <SettingsField label="Registered Agents" value="18 agents across 3 buildings + system layer" />
+      <SettingsField label="Registered Agents" value={`${agents.length} agents across the system`} />
       <SettingsField label="Discovery Mode" value="Automatic capability broadcast" />
       <div className="pt-2 border-t border-[#423F4F]/10 space-y-1">
         <ToggleRow label="Auto-discover new agents" description="New agents are added to the registry automatically once verified." />
@@ -1483,6 +1266,8 @@ const SystemAdministratorSettingsPanel: React.FC = () => (
         <ToggleRow label="Cross-building anomaly detection" description="Flag unusual patterns across the interoperability layer." />
       </div>
     </SettingsSection>
+
+    <AIProviderStatusPanel agents={agents} />
   </div>
 );
 
