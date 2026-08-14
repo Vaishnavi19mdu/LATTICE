@@ -1,5 +1,6 @@
-import { SharedEmergencyState, INITIAL_EMERGENCY_STATE, EventLogEntry } from '../mock/emergencyScenario';
+import { SharedEmergencyState, INITIAL_EMERGENCY_STATE, EventLogEntry, ResponsePlanState } from '../mock/emergencyScenario';
 import { StructuredMockEvent, PRIMARY_15_EVENTS } from '../mock/mockEvents';
+import { MOCK_AGENTS } from '../mock/mockAgents';
 // Single entry point for AI providers, per lib/ai/index.ts's own contract
 // ("never import GroqProvider directly elsewhere"). Safe despite the
 // circular reference back to this file (index.ts re-exports
@@ -25,7 +26,7 @@ export interface AgentRuntime {
   injectOperatorIntervention(instruction: string, constraints?: InterventionConstraints): void;
   selectRole(role: 'BUILDING_OPERATOR' | 'NETWORK_OPERATOR'): void;
   selectBuilding(buildingId: string): void;
-  getEventHistory(): StructuredMockEvent[];
+  getEventQueue(): StructuredMockEvent[];
 }
 
 /** Milliseconds between auto-advanced steps while playbackMode === 'LIVE'. */
@@ -35,6 +36,59 @@ const STEP_INTERVAL_MS = 2600;
  *  before the reader needs the full reasoning summary — keeps the
  *  conversation feed scannable even when Groq returns a long paragraph. */
 const HEADLINE_MAX_CHARS = 140;
+
+/**
+ * Canned per-agent copy for the reassessment cascade an operator directive
+ * triggers. Kept scripted (not AI-generated) so the cascade renders
+ * instantly — only the Coordinator's final synthesis actually calls out to
+ * Groq, once, after it has every agent's reassessment to work from.
+ */
+const REASSESSMENT_COPY: Record<
+  string,
+  { task: string; message: string; reasoning: string; nextAction: string }
+> = {
+  agent_security: {
+    task: 'Re-verifying access/lock status for the exits named in the new directive',
+    message: 'Re-checking CCTV and door-lock telemetry against the new directive.',
+    reasoning:
+      "Cross-referencing the operator's directive against live door-lock and camera feeds to confirm the requested route change is physically safe before the Coordinator commits to it.",
+    nextAction: 'Report verified route status to Coordinator',
+  },
+  agent_occupancy: {
+    task: 'Recomputing occupant flow against the revised route set',
+    message: 'Recalculating occupant flow for the updated route.',
+    reasoning:
+      "Re-running badge-census flow projections against the directive-adjusted exit set to confirm the new route has enough capacity for current floor occupancy.",
+    nextAction: 'Send updated flow projection to Coordinator',
+  },
+  agent_ethical_priority: {
+    task: 'Reassessing mobility-assistance dispatch under the new routing',
+    message: 'Reassessing assistance dispatch for the updated route.',
+    reasoning:
+      "Recalculating equity-weighted dispatch priority so mobility-support occupants are escorted consistently with the operator's directive.",
+    nextAction: 'Confirm assistance routing to Coordinator',
+  },
+  agent_cross_building: {
+    task: 'Reassessing cross-building isolation posture',
+    message: 'Reassessing mutual-aid and damper posture per the new directive.',
+    reasoning:
+      "Checking whether the directive changes concourse isolation requirements or affects the mutual-aid alert already sent to neighboring buildings.",
+    nextAction: 'Confirm isolation status to Coordinator',
+  },
+  agent_fire_hazard: {
+    task: 'Re-checking hazard telemetry against the revised route',
+    message: 'Re-checking hazard telemetry along the revised route.',
+    reasoning:
+      "Confirming the directive-adjusted route doesn't pass closer to the active hazard zone than the current thermal and smoke readings allow.",
+    nextAction: 'Report hazard proximity status to Coordinator',
+  },
+  default: {
+    task: 'Reassessing telemetry against the new operator directive',
+    message: 'Reassessing telemetry against the new directive.',
+    reasoning: 'Re-evaluating current readings in light of the operator directive before reporting back to the Coordinator.',
+    nextAction: 'Report findings to Coordinator',
+  },
+};
 
 /**
  * Default, concrete implementation of AgentRuntime. Drives the 15-step
@@ -82,8 +136,21 @@ class DefaultAgentRuntime implements AgentRuntime {
     };
   }
 
-  getEventHistory(): StructuredMockEvent[] {
-    return this.processedEvents;
+  /**
+   * Full event timeline: already-delivered events (with their eventIndex
+   * corrected to reflect real playback order) followed by whatever hasn't
+   * been reached yet — remaining scripted steps for now, since operator
+   * interventions are processed the instant they're spliced in.
+   *
+   * This MUST be longer than processedEvents while the scenario is still
+   * running, or the UI breaks: activeStepIndex is always set to
+   * processedEvents.length right after every step, so if this returned
+   * processedEvents directly, currentStepIndex and eventQueue.length would
+   * be the exact same number by construction — the "EVENT X / Y" counter
+   * could only ever render X / X, never show real progress.
+   */
+  getEventQueue(): StructuredMockEvent[] {
+    return [...this.processedEvents, ...this.events.slice(this.processedEvents.length)];
   }
 
   runScenario(): void {
@@ -129,19 +196,46 @@ class DefaultAgentRuntime implements AgentRuntime {
 
   /**
    * Processes the operator's directive as a real, visible event right
-   * away, then asynchronously resolves the Coordinator's live reply
-   * (Groq-backed, mock-fallback otherwise) and fills it in once ready.
-   * Both stages grow eventQueue/eventLogs — this is not a state patch.
+   * away, then walks it through a full reassessment cascade — every agent
+   * whose domain the directive touches (exits, occupancy flow, assistance
+   * dispatch, cross-building posture, hazard proximity) re-checks its own
+   * data and reports back, *before* the Coordinator makes its final call.
+   * The Coordinator's Groq request is built from all of those findings,
+   * not just the raw instruction, so "use exit B" actually gets weighed
+   * against verified lock/CCTV status, occupant flow, etc. — not just
+   * echoed back. Every stage is a real event, so a single intervention can
+   * genuinely grow the timeline by several steps (not a fixed +2), and the
+   * revised response plan (safe/blocked routes) is republished at the end
+   * so Decision Control reflects the outcome too.
    */
   injectOperatorIntervention(instruction: string, constraints?: InterventionConstraints): void {
-    const operatorEvent = this.buildOperatorEvent(instruction, constraints);
-    this.insertAndProcessEvent(operatorEvent);
+    // Temporary diagnostic log — confirms the call is actually reaching the
+    // runtime at all. Remove once intervention is confirmed working.
+    console.log('[AgentRuntime] injectOperatorIntervention called with:', instruction, constraints);
 
-    const thinkingEvent = this.buildCoordinatorThinkingEvent();
-    this.insertAndProcessEvent(thinkingEvent);
-    this.setState({ currentStage: 'THINKING' });
+    try {
+      const operatorEvent = this.buildOperatorEvent(instruction, constraints);
+      this.insertAndProcessEvent(operatorEvent);
 
-    void this.resolveCoordinatorResponse(instruction, constraints, thinkingEvent.id);
+      const reassessingAgents = this.determineReassessingAgents(instruction, constraints);
+      for (const agentId of reassessingAgents) {
+        this.insertAndProcessEvent(this.buildAgentReassessmentEvent(agentId, instruction, constraints));
+      }
+
+      const thinkingEvent = this.buildCoordinatorThinkingEvent();
+      this.insertAndProcessEvent(thinkingEvent);
+      this.setState({ currentStage: 'THINKING' });
+
+      void this.resolveCoordinatorResponse(instruction, constraints, thinkingEvent.id, reassessingAgents).catch(
+        (err) => console.error('[AgentRuntime] resolveCoordinatorResponse rejected:', err)
+      );
+    } catch (err) {
+      // A thrown error here (e.g. a bad import, undefined lookup) would
+      // otherwise vanish silently from the caller's point of view — the
+      // click handler doesn't await or catch anything, so React never
+      // surfaces it. Logging explicitly is the only way to see it.
+      console.error('[AgentRuntime] injectOperatorIntervention threw:', err);
+    }
   }
 
   selectRole(role: 'BUILDING_OPERATOR' | 'NETWORK_OPERATOR'): void {
@@ -155,8 +249,16 @@ class DefaultAgentRuntime implements AgentRuntime {
   /** Applies the next unprocessed event's stateUpdates. Returns false if none remain. */
   private advanceOneStep(): boolean {
     const nextIndex = this.processedEvents.length;
-    const event = this.events[nextIndex];
-    if (!event) return false;
+    const rawEvent = this.events[nextIndex];
+    if (!rawEvent) return false;
+
+    // Always derive eventIndex from the event's real position in the
+    // timeline at the moment it's processed, never trust a value baked in
+    // at creation time. Operator interventions splice new events into the
+    // *middle* of the queue (ahead of any remaining scripted steps), so a
+    // pre-assigned eventIndex goes stale the instant that happens — the
+    // "EVENT #N" badges would otherwise jump forward then fall backward.
+    const event: StructuredMockEvent = { ...rawEvent, eventIndex: nextIndex + 1 };
 
     this.processedEvents.push(event);
 
@@ -202,14 +304,11 @@ class DefaultAgentRuntime implements AgentRuntime {
   private insertAndProcessEvent(event: StructuredMockEvent): void {
     const insertIndex = this.processedEvents.length;
     this.events.splice(insertIndex, 0, event);
+    // The timeline just grew, so the total step count the UI shows
+    // ("EVENT X / Y") needs to grow with it, not stay pinned at whatever
+    // the original scripted scenario length was.
+    this.setState({ totalSteps: this.events.length });
     this.advanceOneStep();
-  }
-
-  private nextInterventionEventIndex(): number {
-    // Keep eventIndex monotonically increasing across the whole timeline
-    // (scripted + intervention-generated), matching how the UI's
-    // "EVENT #N" badges are meant to read.
-    return this.events.length + 1;
   }
 
   private buildOperatorEvent(instruction: string, constraints?: InterventionConstraints): StructuredMockEvent {
@@ -218,7 +317,9 @@ class DefaultAgentRuntime implements AgentRuntime {
 
     return {
       id: `operator-${Date.now()}-${this.interventionSeq}`,
-      eventIndex: this.nextInterventionEventIndex(),
+      // Placeholder — advanceOneStep() overwrites this with the event's
+      // real position in the timeline the moment it's processed.
+      eventIndex: -1,
       fromAgentId: 'HUMAN_OPERATOR',
       fromAgentName: 'LATTICE Operator',
       fromIcon: '👤',
@@ -243,6 +344,69 @@ class DefaultAgentRuntime implements AgentRuntime {
     };
   }
 
+  /** Decides which agents a directive actually touches, so the cascade
+   *  reflects the directive's real content instead of always pinging
+   *  every agent regardless of relevance. Falls back to Security so a
+   *  directive with no clear domain still visibly ripples through the mesh. */
+  private determineReassessingAgents(instruction: string, constraints?: InterventionConstraints): string[] {
+    const lower = instruction.toLowerCase();
+    const agents: string[] = [];
+
+    if (constraints?.exits && Object.keys(constraints.exits).length > 0) {
+      agents.push('agent_security', 'agent_occupancy', 'agent_fire_hazard');
+    }
+    if ((lower.includes('exit') || lower.includes('route') || lower.includes('stairwell')) && !agents.includes('agent_security')) {
+      agents.push('agent_security');
+    }
+    if (this.state.occupancy.assistanceRequired > 0 && (lower.includes('mobility') || lower.includes('assist') || agents.length > 0)) {
+      agents.push('agent_ethical_priority');
+    }
+    if (lower.includes('concourse') || lower.includes('building b') || lower.includes('cross') || lower.includes('isolate')) {
+      agents.push('agent_cross_building');
+    }
+
+    const unique = Array.from(new Set(agents));
+    return unique.length > 0 ? unique : ['agent_security'];
+  }
+
+  private buildAgentReassessmentEvent(
+    agentId: string,
+    instruction: string,
+    constraints?: InterventionConstraints
+  ): StructuredMockEvent {
+    this.interventionSeq += 1;
+    const meta = MOCK_AGENTS[agentId];
+    const copy = REASSESSMENT_COPY[agentId] ?? REASSESSMENT_COPY.default;
+    const exitNotes = Object.entries(constraints?.exits ?? {})
+      .map(([exit, status]) => `Exit ${exit} → ${String(status).toUpperCase()}`)
+      .join(', ');
+
+    return {
+      id: `reassess-${agentId}-${Date.now()}-${this.interventionSeq}`,
+      // Placeholder — advanceOneStep() overwrites this with the event's
+      // real position in the timeline the moment it's processed.
+      eventIndex: -1,
+      fromAgentId: agentId,
+      fromAgentName: meta?.name ?? agentId,
+      fromIcon: meta?.icon ?? '🤖',
+      toAgentId: 'agent_coordinator',
+      toAgentName: 'Emergency Coordinator',
+      toIcon: '🧠',
+      type: 'directive_reassessment',
+      topic: 'DIRECTIVE_TRIGGERED_REASSESSMENT',
+      message: copy.message,
+      thinkingText: `Re-evaluating ${meta?.role ?? 'assigned telemetry'} against the new operator directive...`,
+      task: copy.task,
+      inputs: {
+        'Operator Directive': instruction,
+        ...(exitNotes ? { 'Exit Changes': exitNotes } : {}),
+      },
+      capabilitiesUsed: meta?.capabilities ?? [],
+      reasoningSummary: copy.reasoning,
+      nextAction: copy.nextAction,
+    };
+  }
+
   /** Placeholder event pushed immediately so the feed shows the Coordinator
    *  "thinking" right away; finalizePendingEvent mutates this same entry
    *  in place once the live AI response resolves. */
@@ -251,7 +415,9 @@ class DefaultAgentRuntime implements AgentRuntime {
 
     return {
       id: `coordinator-live-${Date.now()}-${this.interventionSeq}`,
-      eventIndex: this.nextInterventionEventIndex(),
+      // Placeholder — advanceOneStep() overwrites this with the event's
+      // real position in the timeline the moment it's processed.
+      eventIndex: -1,
       fromAgentId: 'agent_coordinator',
       fromAgentName: 'Emergency Coordinator',
       fromIcon: '🧠',
@@ -275,32 +441,52 @@ class DefaultAgentRuntime implements AgentRuntime {
 
   /** Calls the live AI provider (Groq, or its mock fallback — see
    *  getAIProvider()) for the Coordinator's real response to the
-   *  directive, then fills in the placeholder event with it. Never
-   *  throws: provider/network failures fall back to a deterministic
-   *  canned response so the sim never gets stuck mid-"thinking". */
+   *  directive, now informed by what every reassessing agent reported
+   *  back, then fills in the placeholder event with it and publishes the
+   *  revised response plan. Never throws: provider/network failures fall
+   *  back to a deterministic canned response so the sim never gets stuck
+   *  mid-"thinking". */
   private async resolveCoordinatorResponse(
     instruction: string,
     constraints: InterventionConstraints | undefined,
-    pendingEventId: string
+    pendingEventId: string,
+    reassessingAgents: string[]
   ): Promise<void> {
     let responseText: string;
 
     try {
       const provider = getAIProvider();
-      responseText = await provider.generateAgentResponse('agent_coordinator', instruction, {
-        role: 'Emergency Coordinator',
-        directive: instruction,
-        appliedConstraints: constraints ?? {},
-        incident: this.state.incident,
-        exits: this.state.exits,
-        occupancy: this.state.occupancy,
-        responsePlan: this.state.responsePlan,
-      });
+      // provider.generateAgentResponse() never throws when no API key is
+      // configured — GroqProvider resolves with a generic, instruction-
+      // agnostic MOCK_RESPONSE string instead. A try/catch alone can't
+      // detect that, so every intervention would get the exact same
+      // boilerplate text regardless of what was typed. Checking
+      // isAvailable() first routes unconfigured mode to our own
+      // buildFallbackCoordinatorResponse(), which actually quotes the
+      // directive and names which exits were blocked.
+      if (!provider.isAvailable()) {
+        responseText = this.buildFallbackCoordinatorResponse(instruction, constraints);
+      } else {
+        responseText = await provider.generateAgentResponse('agent_coordinator', instruction, {
+          role: 'Emergency Coordinator',
+          directive: instruction,
+          appliedConstraints: constraints ?? {},
+          // Names of agents that already re-checked their own domain
+          // against this directive — gives Groq real findings to
+          // synthesize instead of just paraphrasing the raw instruction.
+          reassessingAgents: reassessingAgents.map((id) => MOCK_AGENTS[id]?.name ?? id),
+          incident: this.state.incident,
+          exits: this.state.exits,
+          occupancy: this.state.occupancy,
+          responsePlan: this.state.responsePlan,
+        });
+      }
     } catch {
       responseText = this.buildFallbackCoordinatorResponse(instruction, constraints);
     }
 
     this.finalizePendingEvent(pendingEventId, responseText);
+    this.publishUpdatedResponsePlan(instruction);
   }
 
   private buildFallbackCoordinatorResponse(instruction: string, constraints?: InterventionConstraints): string {
@@ -340,6 +526,63 @@ class DefaultAgentRuntime implements AgentRuntime {
       currentStage: 'DELIVERED',
       currentActivity: 'Coordinator directive-integration response delivered',
     });
+  }
+
+  /** Closing step of the intervention cascade: recomputes safe/blocked
+   *  routes from the (possibly directive-updated) exits, updates
+   *  state.responsePlan so Decision Control reflects the new plan, and
+   *  publishes it as a real, visible event rather than a silent patch. */
+  private publishUpdatedResponsePlan(instruction: string): void {
+    const exitEntries = Object.entries(this.state.exits) as [string, string][];
+    const safeRoutes = exitEntries.filter(([, status]) => status === 'available').map(([exit]) => `Exit ${exit}`);
+    const blockedRoutes = exitEntries.filter(([, status]) => status !== 'available').map(([exit]) => `Exit ${exit}`);
+
+    const updatedPlan: ResponsePlanState = {
+      emergencyLevel: this.state.responsePlan?.emergencyLevel ?? 'HIGH',
+      safeRoutes,
+      blockedRoutes,
+      recommendedActions: [
+        `Route occupants via ${safeRoutes[0] ?? 'the nearest verified-safe exit'} per updated operator directive.`,
+        ...(this.state.responsePlan?.recommendedActions ?? []).filter(
+          (action) => !action.startsWith('Route occupants via')
+        ),
+      ],
+      humanDecision: this.state.responsePlan?.humanDecision ?? null,
+    };
+
+    this.setState({ responsePlan: updatedPlan });
+    this.insertAndProcessEvent(this.buildResponsePlanEvent(instruction, updatedPlan));
+  }
+
+  private buildResponsePlanEvent(instruction: string, plan: ResponsePlanState): StructuredMockEvent {
+    this.interventionSeq += 1;
+
+    return {
+      id: `plan-${Date.now()}-${this.interventionSeq}`,
+      // Placeholder — advanceOneStep() overwrites this with the event's
+      // real position in the timeline the moment it's processed.
+      eventIndex: -1,
+      fromAgentId: 'agent_coordinator',
+      fromAgentName: 'Emergency Coordinator',
+      fromIcon: '🧠',
+      toAgentId: 'OPERATOR_CONSOLE',
+      toAgentName: 'LATTICE Operator Console',
+      toIcon: '💻',
+      type: 'response_plan_generated',
+      topic: 'DIRECTIVE_REVISED_RESPONSE_PLAN',
+      message: `Response plan revised: ${plan.safeRoutes.join(', ') || 'no safe routes remain'} now recommended.`,
+      thinkingText: 'Compiling revised response plan incorporating the operator directive and agent reassessments...',
+      task: 'Publishing directive-revised response plan',
+      inputs: {
+        'Safe Routes': plan.safeRoutes.join(', ') || 'None',
+        'Blocked Routes': plan.blockedRoutes.join(', ') || 'None',
+      },
+      capabilitiesUsed: ['synthesize_plan', 'present_to_human'],
+      reasoningSummary: `Response plan recalculated in light of the operator directive: "${instruction}". Safe routes: ${
+        plan.safeRoutes.join(', ') || 'none remaining'
+      }. Blocked: ${plan.blockedRoutes.join(', ') || 'none'}.`,
+      nextAction: 'Await operator review of revised plan',
+    };
   }
 
   private stopTimer(): void {

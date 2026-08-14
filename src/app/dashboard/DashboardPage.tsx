@@ -8,6 +8,7 @@ import { AgentDetailPage } from '../agents/AgentDetailPage';
 import { EmergencySimulationView } from '../../components/simulation/EmergencySimulationView';
 import { AgentInteractionSuite } from '../../components/simulation/AgentInteractionSuite';
 import { BuildingComparisonView } from '../../components/simulation/BuildingComparisonView';
+import { MutualAidNetworkView } from '../../components/simulation/MutualAidNetworkView';
 import { OperationsChatWidget } from '../../components/simulation/OperationsChatWidget';
 import { BuildingOperatorOverview } from '../../components/dashboard/BuildingOperatorOverview';
 import { NetworkOperatorOverview } from '../../components/dashboard/NetworkOperatorOverview';
@@ -554,14 +555,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToLandin
           {/* TAB 8: MUTUAL AID MESH TAB */}
           {activeTab === 'network' && (
             <div className="space-y-6">
-              <div className="bg-white p-6 rounded-[8px] border border-[#423F4F]/10 shadow-sm">
-                <h1 className="text-2xl font-extrabold text-[#292733] mb-1">CAMPUS CROSS-BUILDING MUTUAL AID NETWORK</h1>
-                <p className="text-xs text-[#565E75]">
-                  Monitors inter-building communication channels and shared infrastructure notifications.
-                </p>
-              </div>
-
-              <BuildingComparisonView />
+              <MutualAidNetworkView />
             </div>
           )}
 

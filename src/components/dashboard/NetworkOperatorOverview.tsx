@@ -54,6 +54,17 @@ export const NetworkOperatorOverview: React.FC<NetworkOperatorOverviewProps> = (
             <Columns className="w-3.5 h-3.5 text-[#7AE04C]" />
             <span>OPEN BUILDING COMPARISON</span>
           </button>
+          <button
+            onClick={() => onNavigateTab('network')}
+            className={`px-3.5 py-2 rounded-[6px] font-bold text-xs uppercase tracking-wider border flex items-center gap-2 cursor-pointer transition-all ${
+              hasCrossAlert
+                ? 'bg-[#E6B85C]/15 hover:bg-[#E6B85C]/25 text-[#292733] border-[#E6B85C]/40'
+                : 'bg-white hover:bg-[#F3F3F3] text-[#292733] border-[#423F4F]/15'
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-[#E6B85C]" />
+            <span>{hasCrossAlert ? 'MUTUAL AID ACTIVE — VIEW' : 'OPEN MUTUAL AID NETWORK'}</span>
+          </button>
         </div>
       </div>
 

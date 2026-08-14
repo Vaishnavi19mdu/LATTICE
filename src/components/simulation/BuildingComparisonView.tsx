@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Building, 
   ShieldAlert, 
@@ -12,10 +12,16 @@ import {
   ArrowRight,
   Info,
   Clock,
-  Flame
+  Flame,
+  ChevronDown,
+  ChevronUp,
+  UserCheck,
+  Gauge
 } from 'lucide-react';
 import { useEmergency } from '../../context/EmergencyContext';
 import { BuildingVisualA, BuildingVisualB, BuildingVisualC } from './BuildingVisuals';
+import { EvacuationRouteMap } from './EvacuationRouteMap';
+import { BUILDING_IDENTITY, getNetworkSummary, type BuildingId } from '../../lib/mock/campusNetworkState';
 
 export const BuildingComparisonView: React.FC = () => {
   const { state } = useEmergency();
@@ -23,6 +29,12 @@ export const BuildingComparisonView: React.FC = () => {
 
   const isEmergencyActive = incident.severity === 'high' || incident.severity === 'critical';
   const hasCrossAlert = crossBuildingAlerts.length > 0;
+
+  // Which building card is expanded — null means all collapsed to the compact comparison view.
+  const [expandedBuilding, setExpandedBuilding] = useState<BuildingId | null>('building_A');
+  const toggleExpanded = (id: BuildingId) => setExpandedBuilding((prev) => (prev === id ? null : id));
+
+  const networkSummary = getNetworkSummary({ isEmergencyActive, hasCrossAlert });
 
   return (
     <div className="space-y-6 font-sans">
@@ -47,6 +59,23 @@ export const BuildingComparisonView: React.FC = () => {
             <span>ROLE: {selectedRole === 'BUILDING_OPERATOR' ? '👤 BUILDING OPERATOR (Bldg A Focus)' : '🌐 NETWORK OPERATOR (Campus Wide)'}</span>
           </span>
         </div>
+      </div>
+
+      {/* CAMPUS NETWORK SUMMARY STRIP */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {[
+          { label: 'CONNECTED BUILDINGS', value: networkSummary.connectedBuildings, color: '#7AE04C' },
+          { label: 'ACTIVE INCIDENTS', value: String(networkSummary.activeIncidents), color: networkSummary.activeIncidents > 0 ? '#E26161' : '#7AE04C' },
+          { label: 'AGENTS ONLINE', value: networkSummary.agentsOnline, color: '#6B9FD4' },
+          { label: 'MUTUAL AID', value: networkSummary.mutualAidActive > 0 ? `${networkSummary.mutualAidActive} ACTIVE` : 'NONE ACTIVE', color: networkSummary.mutualAidActive > 0 ? '#E6B85C' : '#7AE04C' },
+          { label: 'PENDING DECISIONS', value: String(networkSummary.pendingDecisions), color: networkSummary.pendingDecisions > 0 ? '#E6B85C' : '#7AE04C' },
+          { label: 'NETWORK HEALTH', value: `${networkSummary.networkHealthPct}%`, color: '#A99BC9' },
+        ].map((metric) => (
+          <div key={metric.label} className="bg-white border border-[#423F4F]/10 rounded-[8px] p-3.5 shadow-sm font-mono-tech">
+            <span className="text-[9px] text-[#565E75] font-bold uppercase block mb-1 tracking-wide">{metric.label}</span>
+            <span className="text-lg font-extrabold" style={{ color: metric.color }}>{metric.value}</span>
+          </div>
+        ))}
       </div>
 
       {/* NETWORK CONNECTION TOPOLOGY VISUALIZER */}
@@ -176,8 +205,12 @@ export const BuildingComparisonView: React.FC = () => {
             : 'border-[#423F4F]/10'
         }`}>
           <div className="space-y-3">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-[#423F4F]/10 pb-2.5">
+            {/* Header — click to expand/collapse building detail */}
+            <button
+              onClick={() => toggleExpanded('building_A')}
+              className="w-full flex items-center justify-between border-b border-[#423F4F]/10 pb-2.5 text-left cursor-pointer group"
+              aria-expanded={expandedBuilding === 'building_A'}
+            >
               <div>
                 <span className="font-mono-tech text-[10px] font-bold text-[#A99BC9] uppercase block">
                   PRIMARY INCIDENT BUILDING
@@ -186,10 +219,17 @@ export const BuildingComparisonView: React.FC = () => {
                 <p className="font-mono-tech text-[10px] text-[#565E75]">Operations Tower (12 Floors)</p>
               </div>
 
-              <span className="font-mono-tech text-xs font-bold text-[#E26161] bg-[#E26161]/10 px-2.5 py-1 rounded border border-[#E26161]/30 animate-pulse">
-                🔴 EMERGENCY
-              </span>
-            </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono-tech text-xs font-bold text-[#E26161] bg-[#E26161]/10 px-2.5 py-1 rounded border border-[#E26161]/30 animate-pulse">
+                  🔴 EMERGENCY
+                </span>
+                {expandedBuilding === 'building_A' ? (
+                  <ChevronUp className="w-4 h-4 text-[#A99BC9] group-hover:text-[#292733]" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-[#A99BC9] group-hover:text-[#292733]" />
+                )}
+              </div>
+            </button>
 
             {/* 2D Vector Silhouette Illustration */}
             <BuildingVisualA state={state} isFocused={selectedRole === 'BUILDING_OPERATOR'} />
@@ -234,6 +274,26 @@ export const BuildingComparisonView: React.FC = () => {
                 <span className="font-extrabold text-[#7AE04C]">Exit B (Exit A Blocked)</span>
               </div>
             </div>
+
+            {/* EXPANDED DETAIL — Human Operator, Emergency State, Evacuation Route Map */}
+            {expandedBuilding === 'building_A' && (
+              <div className="space-y-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono-tech text-xs">
+                  <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10 space-y-1.5">
+                    <span className="flex items-center gap-1.5 text-[10px] text-[#A99BC9] font-bold uppercase"><UserCheck className="w-3.5 h-3.5" />HUMAN OPERATOR</span>
+                    <p className="font-extrabold text-[#292733]">{BUILDING_IDENTITY.building_A.operator.name}</p>
+                    <p className="text-[#7AE04C] font-bold">{BUILDING_IDENTITY.building_A.operator.online ? '● ONLINE' : '○ OFFLINE'}</p>
+                    <p className="text-[#565E75]">{BUILDING_IDENTITY.building_A.operator.activity}</p>
+                  </div>
+                  <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10 space-y-1.5">
+                    <span className="flex items-center gap-1.5 text-[10px] text-[#A99BC9] font-bold uppercase"><Gauge className="w-3.5 h-3.5" />EMERGENCY STATE</span>
+                    <p className="font-extrabold text-[#E26161]">{incident.severity.toUpperCase()}</p>
+                    <p className="text-[#565E75]">Affected: Floor 4</p>
+                    <p className="text-[#565E75]">Action: Evacuation via Exit B</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Scope Indicator */}
@@ -246,8 +306,12 @@ export const BuildingComparisonView: React.FC = () => {
         {/* ================= BUILDING B ================= */}
         <div className="bg-white border border-[#423F4F]/10 rounded-[8px] p-5 shadow-sm space-y-4 flex flex-col justify-between">
           <div className="space-y-3">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-[#423F4F]/10 pb-2.5">
+            {/* Header — click to expand/collapse building detail */}
+            <button
+              onClick={() => toggleExpanded('building_B')}
+              className="w-full flex items-center justify-between border-b border-[#423F4F]/10 pb-2.5 text-left cursor-pointer group"
+              aria-expanded={expandedBuilding === 'building_B'}
+            >
               <div>
                 <span className="font-mono-tech text-[10px] font-bold text-[#A99BC9] uppercase block">
                   CONNECTED ADJACENT BUILDING
@@ -256,14 +320,21 @@ export const BuildingComparisonView: React.FC = () => {
                 <p className="font-mono-tech text-[10px] text-[#565E75]">North Block (5 Floors)</p>
               </div>
 
-              <span className={`font-mono-tech text-xs font-bold px-2.5 py-1 rounded border ${
-                hasCrossAlert
-                  ? 'text-[#E6B85C] bg-[#E6B85C]/10 border-[#E6B85C]/30 animate-pulse'
-                  : 'text-[#7AE04C] bg-[#7AE04C]/10 border-[#7AE04C]/30'
-              }`}>
-                {hasCrossAlert ? '⚠ MONITORING' : '● OPERATIONAL'}
-              </span>
-            </div>
+              <div className="flex items-center gap-2">
+                <span className={`font-mono-tech text-xs font-bold px-2.5 py-1 rounded border ${
+                  hasCrossAlert
+                    ? 'text-[#E6B85C] bg-[#E6B85C]/10 border-[#E6B85C]/30 animate-pulse'
+                    : 'text-[#7AE04C] bg-[#7AE04C]/10 border-[#7AE04C]/30'
+                }`}>
+                  {hasCrossAlert ? '⚠ MONITORING' : '● OPERATIONAL'}
+                </span>
+                {expandedBuilding === 'building_B' ? (
+                  <ChevronUp className="w-4 h-4 text-[#A99BC9] group-hover:text-[#292733]" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-[#A99BC9] group-hover:text-[#292733]" />
+                )}
+              </div>
+            </button>
 
             {/* 2D Vector Silhouette Illustration */}
             <BuildingVisualB state={state} isFocused={selectedRole === 'NETWORK_OPERATOR'} />
@@ -310,6 +381,24 @@ export const BuildingComparisonView: React.FC = () => {
                 </span>
               </div>
             </div>
+
+            {/* EXPANDED DETAIL — Human Operator + Emergency State */}
+            {expandedBuilding === 'building_B' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono-tech text-xs pt-1">
+                <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10 space-y-1.5">
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#A99BC9] font-bold uppercase"><UserCheck className="w-3.5 h-3.5" />HUMAN OPERATOR</span>
+                  <p className="font-extrabold text-[#292733]">{BUILDING_IDENTITY.building_B.operator.name}</p>
+                  <p className="text-[#7AE04C] font-bold">{BUILDING_IDENTITY.building_B.operator.online ? '● ONLINE' : '○ OFFLINE'}</p>
+                  <p className="text-[#565E75]">{BUILDING_IDENTITY.building_B.operator.activity}</p>
+                </div>
+                <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10 space-y-1.5">
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#A99BC9] font-bold uppercase"><Gauge className="w-3.5 h-3.5" />EMERGENCY STATE</span>
+                  <p className={`font-extrabold ${hasCrossAlert ? 'text-[#E6B85C]' : 'text-[#7AE04C]'}`}>{hasCrossAlert ? 'MUTUAL AID STANDBY' : 'NONE'}</p>
+                  <p className="text-[#565E75]">Affected: Shared Concourse (Floor 4)</p>
+                  <p className="text-[#565E75]">Action: {hasCrossAlert ? 'Damper isolation + relay support' : 'Routine monitoring'}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Scope Indicator */}
@@ -322,8 +411,12 @@ export const BuildingComparisonView: React.FC = () => {
         {/* ================= BUILDING C ================= */}
         <div className="bg-white border border-[#423F4F]/10 rounded-[8px] p-5 shadow-sm space-y-4 flex flex-col justify-between">
           <div className="space-y-3">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-[#423F4F]/10 pb-2.5">
+            {/* Header — click to expand/collapse building detail */}
+            <button
+              onClick={() => toggleExpanded('building_C')}
+              className="w-full flex items-center justify-between border-b border-[#423F4F]/10 pb-2.5 text-left cursor-pointer group"
+              aria-expanded={expandedBuilding === 'building_C'}
+            >
               <div>
                 <span className="font-mono-tech text-[10px] font-bold text-[#A99BC9] uppercase block">
                   CONNECTED ADJACENT BUILDING
@@ -332,10 +425,17 @@ export const BuildingComparisonView: React.FC = () => {
                 <p className="font-mono-tech text-[10px] text-[#565E75]">Research Block (4 Floors)</p>
               </div>
 
-              <span className="font-mono-tech text-xs font-bold text-[#7AE04C] bg-[#7AE04C]/10 px-2.5 py-1 rounded border border-[#7AE04C]/30">
-                ● OPERATIONAL
-              </span>
-            </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono-tech text-xs font-bold text-[#7AE04C] bg-[#7AE04C]/10 px-2.5 py-1 rounded border border-[#7AE04C]/30">
+                  ● OPERATIONAL
+                </span>
+                {expandedBuilding === 'building_C' ? (
+                  <ChevronUp className="w-4 h-4 text-[#A99BC9] group-hover:text-[#292733]" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-[#A99BC9] group-hover:text-[#292733]" />
+                )}
+              </div>
+            </button>
 
             {/* 2D Vector Silhouette Illustration */}
             <BuildingVisualC state={state} isFocused={selectedRole === 'NETWORK_OPERATOR'} />
@@ -378,6 +478,24 @@ export const BuildingComparisonView: React.FC = () => {
                 <span className="font-extrabold text-[#292733]">System Nominal</span>
               </div>
             </div>
+
+            {/* EXPANDED DETAIL — Human Operator + Emergency State */}
+            {expandedBuilding === 'building_C' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono-tech text-xs pt-1">
+                <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10 space-y-1.5">
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#A99BC9] font-bold uppercase"><UserCheck className="w-3.5 h-3.5" />HUMAN OPERATOR</span>
+                  <p className="font-extrabold text-[#292733]">{BUILDING_IDENTITY.building_C.operator.name}</p>
+                  <p className="text-[#7AE04C] font-bold">{BUILDING_IDENTITY.building_C.operator.online ? '● ONLINE' : '○ OFFLINE'}</p>
+                  <p className="text-[#565E75]">{BUILDING_IDENTITY.building_C.operator.activity}</p>
+                </div>
+                <div className="p-3 bg-[#F3F3F3] rounded border border-[#423F4F]/10 space-y-1.5">
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#A99BC9] font-bold uppercase"><Gauge className="w-3.5 h-3.5" />EMERGENCY STATE</span>
+                  <p className="font-extrabold text-[#7AE04C]">NONE</p>
+                  <p className="text-[#565E75]">Affected: —</p>
+                  <p className="text-[#565E75]">Action: Standby / routine sweep</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Scope Indicator */}
@@ -387,6 +505,12 @@ export const BuildingComparisonView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* EVACUATION ROUTE MAP — breaks out to full page width when Building A is expanded,
+          so the floor plan has room to breathe instead of being squeezed into a 1-of-3 column */}
+      {expandedBuilding === 'building_A' && (
+        <EvacuationRouteMap state={state} />
+      )}
     </div>
   );
 };

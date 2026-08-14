@@ -22,12 +22,15 @@ const EmergencyContext = createContext<EmergencyContextType | null>(null);
 export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const runtime = getAgentRuntime();
   const [state, setState] = useState<SharedEmergencyState>(runtime.getCurrentState());
-  const [eventQueue, setEventQueue] = useState<StructuredMockEvent[]>(runtime.getEventHistory());
+  // getEventQueue() (not getEventHistory()) — returns the FULL timeline,
+  // delivered events plus whatever hasn't been reached yet, which is what
+  // lets the UI's "EVENT X / Y" counter show real progress instead of X / X.
+  const [eventQueue, setEventQueue] = useState<StructuredMockEvent[]>(runtime.getEventQueue());
 
   useEffect(() => {
     const unsubscribe = runtime.subscribe((newState) => {
       setState(newState);
-      setEventQueue([...runtime.getEventHistory()]);
+      setEventQueue([...runtime.getEventQueue()]);
     });
     return () => unsubscribe();
   }, [runtime]);
